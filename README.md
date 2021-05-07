@@ -25,7 +25,6 @@ There is no manual z offset calibration any more. It doesn't matte what nozzle o
 The configuration looks like this:
 
 ```
-{
 [z_calibration]
 switch_offset: 0.675 # D2F-5: about 0.5, SSG-5H: about 0.7
 speed: 80
@@ -38,7 +37,6 @@ probe_switch_y: 281
 # this point is for probing on the print surface
 probe_bed_x: 150
 probe_bed_y: 150
-}
 ```
 
 The `switch_offset` is the only needed offset in this calculation since the exact trigger point of the switch cannot be probed directly on a second switch. But, this value does not change and is specified by the switches datasheet.
@@ -48,7 +46,6 @@ The `switch_offset` is the only needed offset in this calculation since the exac
 The calibration is started by using the `CALIBRATE_Z` GCode. If the probe is not on the print head, it will abort the calibration. So, a macro can help here to unpark and park the probe like this:
 
 ```
-{
 [gcode_macro CALIBRATE_Z]
 rename_existing: BASE_CALIBRATE_Z
 gcode:
@@ -60,7 +57,6 @@ gcode:
     _PARK_PROBE
     _RESET_STEPPER_CURRENT
     M117
-}
 ```
 
 Then the `CALIBRATE_Z` GCode needs to be added to the `PRINT_START` macro. For this, just replace the second z homing after QGL with this macro. The sequence could be like this:
