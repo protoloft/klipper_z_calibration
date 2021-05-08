@@ -23,13 +23,17 @@ Any of these changes or even all of them together do **not** influence the first
 
 The only downside is, that the trigger point cannot be probed directly. This is why the body of the switch is clickt on the endstop. This small offset can be taken from the datasheet of the switch and is not influenced in any way.
 
-Temperature or humindity changes are no problem since the switch is not influenced much by them and all values are probed in a small time period and only the releations to each other are used.
+Temperature or humindity changes are not a problem since the switch is not influenced much by them and all values are probed in a small time period and only the releations to each other are used.
 
-The output looks like this (the offset is the one which is applied as GCode offset):
+It even doesn't matter what z-endstop position is configured in Klipper. All positions are relative to this point - only the absolute values are different. But, it is advisable to configure a safe value here to not crash the nozzle in the build plate by accident. The plugin only changes the GCode Offset and it is still possible to move the nozzle over this offset.
+
+The output of the calibration looks like this (the offset is the one which is applied as GCode offset):
 
 ```
-Z-CALIBRATION: ENDSTOP=0.000 NOZZLE=-0.378 SWITCH=6.760 PROBE=7.390 --> OFFSET=-0.423
+Z-CALIBRATION: ENDSTOP=-0.300 NOZZLE=-0.300 SWITCH=6.208 PROBE=7.013 --> OFFSET=-0.170
 ```
+
+The endstop value is the homed z position which is the same as the configure z-endstop position.
 
 ## How to configure it
 
