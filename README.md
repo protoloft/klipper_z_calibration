@@ -5,13 +5,20 @@ There is no need for a manual z offset or first layer calibration any more. It i
 the nozzle, the flex plate, any modding on the print head or bed or even changing the z endstop position value of the klipper configuration.
 Any of these changes or even all of them together do **not** influence the first layer at all. It's amazing!
 
+## Why this
+
+With the Voron V2 z-endstop, you can exchange nozzles without changing the offset. And by using a mag-probe (or SuperPinda, but it's not probing
+directly the surface) as a z-endstop, you can exchange the flex plates without changing the offset. But you cannot get both and even more.
+
+And this is what I did. I just combined these two methods to be completely independent of any offset calibrations.
+
 ## Requirements
 
-- A z-endstop where the nozzle drives on a switch (like the standard Voron V2 enstop)
-- A magnetic switch bases probe on the print head - instead of the inductive probe ([like the one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9))
+- A z-endstop where the tip of the nozzle drives on a switch (like the standard Voron V2 enstop)
+- A magnetic switch based probe at the print head - instead of the stock inductive probe ([like the one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9))
 - The switch of the probe needs to be used as normaly closed. The plugin is then able to detect that the mag-probe is attached to the print head.
-- The `z_calibration.py` file copied to the `klipper/klippy/extras` folder
-- (My previous Klipper macro for compensating the temperature based expansion of the z-endstop pin is not needed anymore.)
+- The `z_calibration.py` file needs to be copied to the `klipper/klippy/extras` folder.
+- (My previous Klipper macro for compensating the temperature based expansion of the z-endstop pin is **not** needed anymore.)
 
 ## What it does
 
@@ -37,7 +44,7 @@ The endstop value is the homed z position which is the same as the configure z-e
 
 ## How to configure it
 
-The configuration looks like this:
+The configuration of this plugin looks like this:
 
 ```
 [z_calibration]
@@ -51,11 +58,12 @@ probe_bed_x: 150      # coordinates for probing on the print surface (the center
 probe_bed_y: 150
 ```
 
-The `switch_offset` is the mentioned offset from the probed switch body to the trigger point. The value can be taken from the datasheet of the switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It is good to start with a little less depending on the squishiness you prefer for the first layer. This value is really fixed one!
+The `switch_offset` is the already mentioned offset from the switch body (which is the probed position) to the actual trigger point. The value can be taken from the datasheet of the Omron switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It is good to start with a little less depending on the squishiness you prefer for the first layer. This value is a really fixed one!
 
 ## How to use it
 
-The calibration is started by using the `CALIBRATE_Z` GCode. If the probe is not on the print head, it will abort the calibration. So, a macro can help here to unpark and park the probe like this:
+The calibration is started by using the `CALIBRATE_Z` command. If the probe is not attached to the print head, it will abort the calibration process.
+So, macros can help here to unpark and park the probe like this:
 
 ```
 [gcode_macro CALIBRATE_Z]
@@ -63,15 +71,15 @@ rename_existing: BASE_CALIBRATE_Z
 gcode:
     CG28
     M117 Z-Calibration..
-    _SET_LOWER_STEPPER_CURRENT  # this is not needed 
-    _GET_PROBE
+    _SET_LOWER_STEPPER_CURRENT  # I lower the stepper current for homing and probing stuff - this is not needed 
+    _GET_PROBE                  # a macro for fetching the probe first
     BASE_CALIBRATE_Z
-    _PARK_PROBE
-    _RESET_STEPPER_CURRENT      # 
+    _PARK_PROBE                 # and parking it afterwards
+    _RESET_STEPPER_CURRENT
     M117
 ```
 
-Then the `CALIBRATE_Z` GCode needs to be added to the `PRINT_START` macro. For this, just replace the second z homing after QGL with this macro. The sequence could be like this:
+Then the `CALIBRATE_Z` command needs to be added to the `PRINT_START` macro. For this, just replace the second z homing after QGL with this macro. The sequence could be like this:
 
 1. home all axes
 2. heat up the bed and nozzle
@@ -81,7 +89,7 @@ Then the `CALIBRATE_Z` GCode needs to be added to the `PRINT_START` macro. For t
 6. print intro line
 7. start printing...
 
-**!! Happy Printing with an always perfect first layer - doesn't matter what you just modded on your print head/bed or what nozzle and flex plate you like to use for the next print !!**
+**!! Happy Printing with an always perfect first layer - doesn't matter what you just modded on your print head/bed or what nozzle and flex plate you like to use for the next print. It just stays the same :-) !!**
 
 ## Dislaimer
 
