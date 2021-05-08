@@ -11,7 +11,7 @@ Any of these changes or even all of them together do **not** influence the first
 - A magnetic switch bases probe on the print head - instead of the inductive probe ([like the one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9))
 - The switch of the probe needs to be used as normaly closed. The plugin is then able to detect that the mag-probe is attached to the print head.
 - The `z_calibration.py` file copied to the `klipper/klippy/extras` folder
-- My previous compensation macro for the temperature based expansion of the z-endstop pin is not needed anymore.
+- (My previous Klipper macro for compensating the temperature based expansion of the z-endstop pin is not needed anymore.)
 
 ## What it does
 
