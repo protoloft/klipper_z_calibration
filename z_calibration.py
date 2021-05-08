@@ -145,7 +145,7 @@ class CalibrationState:
         offset = probe_zero - (switch_zero - nozzle_zero + self.helper.switch_offset)
 
         # reset gcode z offset to 0
-        gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET", "SET_GCODE_OFFSET", {'Z_ADJUST': '0'})
+        gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET", "SET_GCODE_OFFSET", {'Z': 0.0, 'MOVE': '1'})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
         # set new gcode z offset
         gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET", "SET_GCODE_OFFSET", {'Z_ADJUST': offset, 'MOVE': '1'})
