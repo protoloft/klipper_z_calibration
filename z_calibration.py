@@ -2,6 +2,7 @@ import logging
 
 # [z_calibration]
 # switch_offset: 0.675 # D2F-5: about 0.5, SSG-5H: about 0.7
+# max_deviation: 1.0   # max deviation in mm
 # speed: 80
 # probe_nozzle_x: 206 
 # probe_nozzle_y: 300
@@ -24,8 +25,9 @@ class ZCalibrationHelper:
 
         self.config = config
         self.printer = config.get_printer()
-        self.switch_offset = config.getfloat('switch_offset', 0, above=0.)
-        self.speed = config.getfloat('speed', 100, above=0.)
+        self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
+        self.max_deviation = config.getfloat('max_deviation', 1.0, above=0.)
+        self.speed = config.getfloat('speed', 100.0, above=0.)
         self.probe_nozzle_site = [
             config.getfloat('probe_nozzle_x'),
             config.getfloat('probe_nozzle_y'),
@@ -144,6 +146,16 @@ class CalibrationState:
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero + self.helper.switch_offset)
 
+        # print result
+        self.gcmd.respond_info("Z-CALIBRATION: ENDSTOP=%.3f NOZZLE=%.3f SWITCH=%.3f PROBE=%.3f --> OFFSET=%.3f" 
+                % (self.helper.z_homing, nozzle_zero, switch_zero, probe_zero, offset))
+
+        # check max deviation
+        if abs(offset) > self.helper.max_deviation:
+            raise self.helper.printer.command_error("Offset is larger as allowed: OFFSET=%.3f MAX_DEVIATION=%.3f" 
+                % (offset, self.helper.max_deviation))
+            return
+
         # reset gcode z offset to 0
         gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET", "SET_GCODE_OFFSET", {'Z': 0.0, 'MOVE': '1'})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
@@ -154,9 +166,6 @@ class CalibrationState:
         # set state
         self.helper.last_state = True
         self.helper.last_z_offset = offset
-
-        self.gcmd.respond_info("Z-CALIBRATION: ENDSTOP=%.3f NOZZLE=%.3f SWITCH=%.3f PROBE=%.3f --> OFFSET=%.3f" 
-                % (self.helper.z_homing, nozzle_zero, switch_zero, probe_zero, offset))
 
 def load_config(config):
     return ZCalibrationHelper(config)
