@@ -43,11 +43,19 @@ independent of any offset calibrations.
    ![switch position](pictures/switch-position.png)
 4. Calculate the offset between the tip of the nozzle and the trigger point of the
    mag-probe:
-   $$\text{nozzle-switch offset} = \text{mag-probe z height} - \text{nozzle z height} + \text{switch offset}$$
+
+```
+   nozzle switch offset = mag probe z height - nozzle z height + switch offset
+```
+
    ![switch offset](pictures/switch-offset.png)
 5. Determine the height in z of the print surface by probing one point with the mag-probe.
 6. Calculate the final offset:
-   $$\text{probe offset} = \text{probed z height} - \text{calculated nozzle-switch offset}$$
+
+```
+   probe offset = probed z height - calculated nozzle switch offset
+```
+
 5. Finally, the calculated offset is applied by using the `SET_GCODE_OFFSET` command (a previous offset is resetted before).
 
 ### Drawback
