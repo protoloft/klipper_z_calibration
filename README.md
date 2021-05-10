@@ -26,9 +26,10 @@ independent of any offset calibrations.
   Voron V1/V2 enstop)
 - A magnetic switch based probe at the print head - instead of the stock inductive probe
   ([e.g. this one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9))
-- The switch of the probe needs to be used as normaly closed. The plugin is then able to
-  detect that the mag-probe is attached to the print head.
 - The `z_calibration.py` file needs to be copied to the `klipper/klippy/extras` folder.
+- It's good practise to use the probe switch as normaly closed. Then, macros can detect
+  if the probe is attached/released properly. The plugin is also able to detect that
+  the mag-probe is attached to the print head - otherwise it will stop.
 - (My previous Klipper macro for compensating the temperature based expansion of the
   z-endstop rod is **not** needed anymore.)
 
