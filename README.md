@@ -1,4 +1,4 @@
-# A Klipper plugin for a self calibrating z offset
+# This is a Klipper plugin for a self calibrating z offset
 
 This is a Klipper plugin to self calibrate the nozzle offset to the print surface on a
 Voron V1/V2. There is no need for a manual z offset or first layer calibration any more.
@@ -27,11 +27,15 @@ independent of any offset calibrations.
 - A magnetic switch based probe at the print head - instead of the stock inductive probe
   ([e.g. this one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9))
 - The `z_calibration.py` file needs to be copied to the `klipper/klippy/extras` folder.
+  Klipper will then load this file if it finds the `z_calibration` configuration section.
 - It's good practise to use the probe switch as normaly closed. Then, macros can detect
   if the probe is attached/released properly. The plugin is also able to detect that
   the mag-probe is attached to the print head - otherwise it will stop.
 - (My previous Klipper macro for compensating the temperature based expansion of the
   z-endstop rod is **not** needed anymore.)
+
+> **Note:** After copying the pyhton script, a full Klipper service restart is needed to
+> load it!
 
 ## What it does
 
@@ -72,6 +76,7 @@ some celsius higher, compared to the homing in step 1. That is why the nozzle is
 again and can vary to the first homing position.
 
 ### Example
+
 The output of the calibration with all determined positions looks like this
 (the offset is the one which is applied as GCode offset):
 
@@ -88,14 +93,28 @@ The configuration of this plugin looks like this:
 
 ```
 [z_calibration]
-switch_offset: 0.675  # using SSG-5H
-speed: 80             # the moving speed in x and y
-probe_nozzle_x: 206   # coordinates for clicking the nozzle on the z-endstop
-probe_nozzle_y: 300
-probe_switch_x: 211   # coordinates for clicking the probe's switch on the z-endstop
-probe_switch_y: 281
-probe_bed_x: 150      # coordinates for probing on the print surface (the center point)
-probe_bed_y: 150
+switch_offset:
+#   The trigger point offset of the used switch of the
+#   mag-probe. This needs to be determined manually.
+#   More on this later in this section..
+max_deviation: 1.0
+#   The maximum allowed deviation of the calculated offset.
+#   If the offset exceeds this value, it will stop!
+#   The default is 1.0 mm.
+speed: 100
+#   The moving speed in X and Y. The default is 100
+probe_nozzle_x:
+probe_nozzle_y:
+#   The X and Y coordinates for clicking the nozzle on the
+#   z-endstop.
+probe_switch_x:
+probe_switch_y:
+#   The X and Y coordinates for clicking the probe's switch
+#   on the z-endstop.
+probe_bed_x:
+probe_bed_y:
+#   The X and Y coordinates for probing on the print surface
+#   (e.g. the center point)
 ```
 
 The `switch_offset` is the already mentioned offset from the switch body (which is the
@@ -103,6 +122,11 @@ probed position) to the actual trigger point. The value can be taken from the da
 the Omron switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It is good to start with a little less
 depending on the squishiness you prefer for the first layer. This value is a really fixed
 one!
+
+For the move up commands after probing, the `z_offset` parameter of the `[probe]` section
+is used and also doubled for clearance safety. Further on, from the z configuration, the
+`(second_)homing_speed`, `homing_retract_dist` and `position_min` values are taken for
+probing too.
 
 It even doesn't matter what z-endstop position is configured in Klipper. All positions are
 relative to this point - only the absolute values are different. But, it is advisable to
