@@ -120,8 +120,8 @@ probe_bed_y:
 The `switch_offset` is the already mentioned offset from the switch body (which is the
 probed position) to the actual trigger point. The value can be taken from the datasheet of
 the Omron switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It is good to start with a little less
-depending on the squishiness you prefer for the first layer. This value is a really fixed
-one!
+depending on the squishiness you prefer for the first layer (for me, it's -0.25). This
+value is a really fixed one!
 
 For the move up commands after probing, the `z_offset` parameter of the `[probe]` section
 is used and also doubled for clearance safety. Further on, from the z configuration, the
@@ -134,11 +134,13 @@ configure a safe value here to not crash the nozzle in the build plate by accide
 plugin only changes the GCode Offset and it is still possible to move the nozzle over this
 offset.
 
-> **Note:** With the recent Klipper version I recognized, that the switch is not clicking
+> **Note:** ~~With the recent Klipper version I recognized, that the switch is not clicking
 > anymore while probing. May be, it is because of the fixed bug regarding the clock speed
 > divider and the mcu is reacting faster now? Or there were any other changes in the
 > probing routine, which I missed. And this is a change in the whole system, which direcly
-> influences this switch offset. As a consequence, I had to increase the switch offset...
+> influences this switch offset. As a consequence, I had to increase the switch offset...~~
+> My SSG-5H switch got damaged somehow and the repeatability got worse too. I'm not sure if
+> this was my fault or if the switch is not the best choice..
 
 ## How to use it
 
