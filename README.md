@@ -7,6 +7,10 @@ the flex plate, any modding on the print head or bed or even changing the z ends
 position value of the klipper configuration. Any of these changes or even all of them
 together do **not** affect the first layer at all.
 
+> **NEW:** The probing repeatability is now increased dramatically by using the probing
+> procedure instead of the homing procedure! But note, the offset will change slightly,
+> if z is homed again or temperatures changes - but this is as intended.
+
 ## Why this
 
 - With the Voron V1/V2 z-endstop (the one where the tip of the nozzle clicks on a switch),
@@ -43,10 +47,10 @@ independent of any offset calibrations.
 
 1. Normal homing of all axes using the z-endstop for z - now we have a zero point in z.
    (this is not part of this plugin)
-2. Determine the height in z of the nozzle by probing the tip of it on the z-endstop
+2. Determine the height of the nozzle by probing the tip of it on the z-endstop
    (should be mor or less the homed enstop position):
    ![nozzle position](pictures/nozzle-position.png)
-3. Determine the height in z of the mag-probe by probing the body of the switch on the
+3. Determine the height of the mag-probe by probing the body of the switch on the
    z-endstop:
    ![switch position](pictures/switch-position.png)
 4. Calculate the offset between the tip of the nozzle and the trigger point of the
@@ -55,7 +59,7 @@ independent of any offset calibrations.
    `nozzle switch offset = mag probe z height - nozzle z height + switch offset`
 
    ![switch offset](pictures/switch-offset.png)
-5. Determine the height in z of the print surface by probing one point with the mag-probe.
+5. Determine the height of the print surface by probing one point with the mag-probe.
 6. Now, calculate the final offset:
 
    `probe offset = probed z height - calculated nozzle switch offset`
@@ -125,10 +129,10 @@ probed position) to the actual trigger point. A starting point can be taken from
 datasheet of the Omron switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It is good to start with
 a little less depending on the squishiness you prefer for the first layer (for me, it's -0.25).
 
-For the move up commands after every probing steps, the `z_offset` parameter of the `[probe]`
-section is used and also doubled for clearance safety. Further on, from the z configuration,
-the `(second_)homing_speed`, `homing_retract_dist` and `position_min` values are taken for
-probing too.
+For the move up commands after the probing samples, the `z_offset` parameter of the `[probe]`
+section is used and also doubled for clearance safety. Further on, all necessary values for
+probing the samples are taken from the prob's configuration too. But, from the z configuration
+are the `second_homing_speed`, `homing_retract_dist` and `position_min`.
 
 It even doesn't matter what z-endstop position is configured in Klipper. All positions are
 relative to this point - only the absolute values are different. But, it is advisable to
