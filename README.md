@@ -34,6 +34,8 @@ independent of any offset calibrations.
 - Both, the z-endstop and mag-probe are configured properly and homing and QGL are working.
 - The `z_calibration.py` file needs to be copied to the `klipper/klippy/extras` folder.
   Klipper will then load this file if it finds the `z_calibration` configuration section.
+  It does not interfere with the Moonraker's Klipper update since git ignores unknown
+  files.
 - It's good practise to use the probe switch as normaly closed. Then, macros can detect
   if the probe is attached/released properly. The plugin is also able to detect that
   the mag-probe is attached to the print head - otherwise it will stop.
@@ -139,6 +141,9 @@ relative to this point - only the absolute values are different. But, it is advi
 configure a safe value here to not crash the nozzle into the build plate by accident. The
 plugin only changes the GCode offset and it's still possible to move the nozzle beyond this
 offset.
+
+My experiences about probing speeds: for the `second_homing_speed` on z endstop, I use
+2 mm/s and for the probe, I use 2-5 mm/s.
 
 > **Note:** ~~With the recent Klipper version I recognized, that the switch is not clicking
 > anymore while probing. May be, it is because of the fixed bug regarding the clock speed
