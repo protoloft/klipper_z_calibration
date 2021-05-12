@@ -163,7 +163,7 @@ probing_first_fast: false
 #   probing sample. The default is false.
 ```
 
-**CAUTION: If you use a bed mesh, the coordinates for probing on the print bed mustebe be
+**CAUTION: If you use a bed mesh, the coordinates for probing on the print bed must be
 exaclty the reference point of the mesh since this is the zero point - otherwise, you would
 get into trouble!**
 
@@ -182,14 +182,6 @@ offset.
 My experiences about probing speeds: for the `second_homing_speed` on Z endstop, I use
 2 mm/s and for the probe, I use 2-5 mm/s. Reducing the acceleration for probing may
 be good too.
-
-> **Note:** ~~With the recent Klipper version I recognized, that the switch is not clicking
-> anymore while probing. May be, it is because of the fixed bug regarding the clock speed
-> divider and the mcu is reacting faster now? Or there were any other changes in the
-> probing routine, which I missed. And this is a change in the whole system, which direcly
-> influences this switch offset. As a consequence, I had to increase the switch offset...~~
-> My SSG-5H switch got damaged somehow and the repeatability got more and more worse too.
-> I'm not sure if this was my fault or if the switch is not the best choice..
 
 ## How to use it
 
@@ -223,7 +215,7 @@ sequence could look like this:
 6. print intro line
 7. start printing...
 
-**Do not home Z again after running this calibration or it needs to be executed again!**
+**NOTE: Do not home Z again after running this calibration or it needs to be executed again!**
 
 > Happy printing with an always perfect first layer - doesn't matter what you just
 > modded on your print head/bed or what nozzle and flex plate you like to use for the next
