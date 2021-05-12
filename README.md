@@ -123,13 +123,18 @@ probe_switch_y:
 probe_bed_x:
 probe_bed_y:
 #   The X and Y coordinates for probing on the print surface
-#   (e.g. the center point)
+#   (e.g. the center point) These coordinates will be adapted
+#   by the probe's X and Y offsets.
 ```
+
+**CAUTION: If you use a bed mesh, the coordinates for probing on the print bed need to be
+exaclty the reference point of the mesh since this is the zero point**
 
 The `switch_offset` is the already mentioned offset from the switch body (which is the
 probed position) to the actual trigger point. A starting point can be taken from the
-datasheet of the Omron switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It is good to start with
-a little less depending on the squishiness you prefer for the first layer (for me, it's -0.25).
+datasheet of the Omron switch (D2F-5: 0.5mm and SSG-5H: 0.7mm). It's good to start with
+a little less depending on the squishiness you prefer for the first layer (for me, it's about
+0.25 less). So, with a lower offset, the nozzle is more away from the bed!
 
 For the move up commands after the probing samples, the `z_offset` parameter of the `[probe]`
 section is used and also doubled for clearance safety. Further on, all necessary values for
@@ -184,6 +189,8 @@ sequence could look like this:
 5. get probe, CALIBRATE_Z, park probe
 6. print intro line
 7. start printing...
+
+**Do not home z again after running this calibration or it needs to be executed again!**
 
 > Happy printing with an always perfect first layer - doesn't matter what you just
 > modded on your print head/bed or what nozzle and flex plate you like to use for the next
