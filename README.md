@@ -36,7 +36,7 @@ independent of any offset calibrations.
   Klipper will then load this file if it finds the `z_calibration` configuration section.
   It does not interfere with the Moonraker's Klipper update since git ignores unknown
   files.
-- It's good practise to use the probe switch as normaly closed. Then, macros can detect
+- It's good practise to use the probe switch as normally closed. Then, macros can detect
   if the probe is attached/released properly. The plugin is also able to detect that
   the mag-probe is attached to the print head - otherwise it will stop.
 - (My previous Klipper macro for compensating the temperature based expansion of the
@@ -207,13 +207,22 @@ Then the `CALIBRATE_Z` command needs to be added to the `PRINT_START` macro. For
 just replace the second z homing after QGL and nozzle cleaning with this macro. The
 sequence could look like this:
 
-1. home all axes
-2. heat up the bed and nozzle (and chamber)
-3. get probe, make QGL, park probe
-4. purge and clean the nozzle
-5. get probe, CALIBRATE_Z, park probe
-6. print intro line
-7. start printing...
+1. Home all axes
+2. Heat up the bed and nozzle (and chamber)
+3. Get probe, make QGL, park probe
+4. Purge and clean the nozzle
+5. Get probe, CALIBRATE_Z, park probe
+6. (Adjust Z offset if needed somehow)
+6. Print intro line
+7. Start printing...
+
+I don't know why, but if you still need to adjust the offset from your Slicers start GCode,
+then add this to your `PRINT_START` macro **after** the Z calibration:
+```
+    # Adjust the G-Code Z offset if needed
+    SET_GCODE_OFFSET Z_ADJUST={params.Z_ADJUST|default(0.0)|float} MOVE=1
+```
+This does **not** reset to a fixed offset but adjusts it by the given value.
 
 **NOTE: Do not home Z again after running this calibration or it needs to be executed again!**
 

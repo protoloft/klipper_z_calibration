@@ -232,7 +232,7 @@ class CalibrationState:
         probe_zero = self._probe_on_bed(self.helper.probe_bed_site)
 
         # move up
-        self.toolhead.manual_move([None, None, probe_zero + self.helper.probing_clearance], self.helper.probing_lift_speed)
+        self.toolhead.manual_move([None, None, probe_zero + self.helper.probing_retract_dist], self.helper.probing_lift_speed)
 
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero + self.helper.switch_offset)
