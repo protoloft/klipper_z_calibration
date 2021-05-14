@@ -7,6 +7,8 @@ the flex plate, any modding on the print head or bed or even changing the Z ends
 position value of the klipper configuration. Any of these changes or even all of them
 together do **not** affect the first layer at all.
 
+Here is a small video demonstration: [https://streamable.com/wclrmc](https://streamable.com/wclrmc)
+
 > **NEW:** The probing repeatability is now increased dramatically by using the probing
 > procedure instead of the homing procedure! But note, the offset will change slightly,
 > if Z is homed again or temperatures changes - but this is as intended.
@@ -179,9 +181,14 @@ configure a safe value here to not crash the nozzle into the build plate by acci
 plugin only changes the GCode offset and it's still possible to move the nozzle beyond this
 offset.
 
-My experiences about probing speeds: for the `second_homing_speed` on Z endstop, I use
-2 mm/s and for the probe, I use 2-5 mm/s. Reducing the acceleration for probing may
-be good too.
+My experiences about probing speeds: for the `second_homing_speed` on Z endstop, ~~I use
+2 mm/s and for the probe, I use 2-5 mm/s.~~ Ok, now I'm on 4 mm/s - seems too slow is not
+good as well. A retract of 1mm works most of the time, but can be too little! And reducing
+the acceleration for probing maybe good too.
+
+**HINT: Just to be clear, the settings about probing do not apply to the probing on the
+bed, since the script just calls the probe there to do it's job. Only the first fast down
+probing is covered by this script directly.
 
 ## How to use it
 
