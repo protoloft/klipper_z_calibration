@@ -9,9 +9,15 @@ together do **not** affect the first layer at all.
 
 Here is a small video demonstration: [https://streamable.com/wclrmc](https://streamable.com/wclrmc)
 
-> **NEW:** The probing repeatability is now increased dramatically by using the probing
-> procedure instead of the homing procedure! But note, the offset will change slightly,
-> if Z is homed again or temperatures changes - but this is as intended.
+## New
+
+- **v0.4**: The bed probing point can be omitted and the `relative_reference_index` of
+  the bed mesh is taken as default instead.
+- **v0.3**: A new option to first probe down fast before recording the probing samples.
+  And all indirect properties from other sections can be customized now.
+- **v0.2**: The probing repeatability is now increased dramatically by using the probing
+  procedure instead of the homing procedure! But note, the offset will change slightly,
+  if Z is homed again or temperatures changes - but this is as intended!
 
 ## Why this
 
@@ -113,11 +119,14 @@ probe_switch_x:
 probe_switch_y:
 #   The X and Y coordinates (in mm) for clicking the probe's switch
 #   on the Z endstop.
-probe_bed_x:
-probe_bed_y:
+probe_bed_x: default from relative_reference_index of bed_mesh
+probe_bed_y: default from relative_reference_index of bed_mesh
 #   The X and Y coordinates (in mm) for probing on the print surface
 #   (e.g. the center point) These coordinates will be adapted by the
-#   probe's X and Y offsets.
+#   probe's X and Y offsets. The default is the relative_reference_index
+#   of the configured bed_mesh. It will raise an error if there is no
+#   probe_bed site and no bed_mesh with a relative_reference_index
+#   configured.
 switch_offset:
 #   The trigger point offset of the used mag-probe switch.
 #   This needs to be fined out manually. More on this later
@@ -167,8 +176,10 @@ probing_first_fast: false
 ```
 
 **CAUTION: If you use a bed mesh, the coordinates for probing on the print bed must be
-exaclty the reference point of the mesh since this is the zero point - otherwise, you would
-get into trouble!**
+exactly the relative reference point of the mesh since this is the zero point! In this
+case, you can ommit these properties and as default the relative reference point of the
+mesh will be taken automatically (the `relative_reference_index` of the `bed_mesh` is
+required for this)!**
 
 The `switch_offset` is the already mentioned offset from the switch body (which is the
 probed position) to the actual trigger point. A starting point can be taken from the

@@ -1,4 +1,5 @@
 import logging
+from mcu import MCU_endstop
 
 class ZCalibrationHelper:
     def __init__(self, config):
@@ -36,8 +37,8 @@ class ZCalibrationHelper:
             None,
         ]
         self.probe_bed_site = [
-            config.getfloat('probe_bed_x'),
-            config.getfloat('probe_bed_y'),
+            config.getfloat('probe_bed_x', None),
+            config.getfloat('probe_bed_y', None),
             None,
         ]
 
@@ -59,9 +60,15 @@ class ZCalibrationHelper:
         # get z-endstop
         for endstop, name in self.query_endstops.endstops:
             if name == 'z':
+                # check for virtual endstops..
+                if not isinstance(endstop, MCU_endstop):
+                    raise self.printer.config_error(
+                        "No virtual endstops for z are supported for calibrate_z module!")
                 self.z_endstop = EndstopWrapper(self.config, endstop)
         # get probing settings
-        probe = self.printer.lookup_object('probe')
+        probe = self.printer.lookup_object('probe', default=None)
+        if probe is None:
+            raise self.printer.config_error("A configured probe is needed for calibrate_z module!")
         if self.probing_samples is None:
             self.probing_samples = probe.sample_count
         if self.probing_samples_tolerance is None:
@@ -74,6 +81,18 @@ class ZCalibrationHelper:
             self.probing_clearance = probe.z_offset * 2
         if self.probing_samples_result is None:
             self.probing_samples_result = probe.samples_result
+        # get the mesh's relative reference point
+        if self.probe_bed_site[0] is None or self.probe_bed_site[1] is None:
+            mesh = self.printer.lookup_object('bed_mesh', default=None)
+            if mesh is None or mesh.bmc.relative_reference_index is None:
+                raise self.printer.config_error(
+                    "Either configure probe_bed_x and probe_bed_y or configure "
+                    "a mesh with a relative_reference_index for calibrate_z module!")
+            rri = mesh.bmc.relative_reference_index
+            self.probe_bed_site[0] = mesh.bmc.points[rri][0]
+            self.probe_bed_site[1] = mesh.bmc.points[rri][1]
+        logging.debug("Z-CALIBRATION probe_bed_x=%.3f probe_bed_y=%.3f"
+            % (self.probe_bed_site[0], self.probe_bed_site[1]))
 
     def handle_home_rails_end(self, homing_state, rails):
         # get z homing position
