@@ -4,22 +4,29 @@ This is a Klipper plugin to self calibrate the nozzle offset to the print surfac
 Voron V1/V2. There is no need for a manual Z offset or first layer calibration any more.
 It is possible to change any variable in the printer from the temperature, the nozzle,
 the flex plate, any modding on the print head or bed or even changing the Z endstop
-position value of the klipper configuration. Any of these changes or even all of them
+position value in the klipper configuration. Any of these changes or even all of them
 together do **not** affect the first layer at all.
 
-Here is a small video demonstration: [https://streamable.com/wclrmc](https://streamable.com/wclrmc)
+Here is a small video demonstrating the process:
+[https://streamable.com/wclrmc](https://streamable.com/wclrmc)
+
+#### Many thanks for all your feedback to make this happen!
+
+And, if you like my work and would like to support me, please feel free to tip me here:
+
+[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/donate?hosted_button_id=L3ZN4SAWW2NMC)
 
 ## New
 
-- **v0.4**: The bed probing point can be omitted and the `relative_reference_index` of
-  the bed mesh is taken as default instead.
+- **v0.4**: The bed probing point can be omitted in the configuration and the
+  `relative_reference_index` of the bed mesh is taken as default instead.
 - **v0.3**: A new option to first probe down fast before recording the probing samples.
   And all indirect properties from other sections can be customized now.
 - **v0.2**: The probing repeatability is now increased dramatically by using the probing
   procedure instead of the homing procedure! But note, the offset will change slightly,
   if Z is homed again or temperatures changes - but this is as intended!
 
-## Why this
+## Why This
 
 - With the Voron V1/V2 z-endstop (the one where the tip of the nozzle clicks on a switch),
   you can exchange nozzles without adapting the offset:
@@ -31,7 +38,7 @@ Here is a small video demonstration: [https://streamable.com/wclrmc](https://str
 - But, why can't you get both of it? Or even more.. ?
 
 And this is what I did. I just combined these two probing methods to be completely
-independent of any offset calibrations.
+independent of any offset calibrations - forever. This is so amazing!
 
 ## Requirements
 
@@ -54,7 +61,7 @@ independent of any offset calibrations.
 > **Note:** After copying the pyhton script, a full Klipper service restart is needed to
 > load it!
 
-## What it does
+## What It Does
 
 1. Normal homing of all axes using the Z endstop for Z - now we have a zero point in Z.
    (this is not part of this plugin)
@@ -105,7 +112,7 @@ Z-CALIBRATION: ENDSTOP=-0.300 NOZZLE=-0.300 SWITCH=6.208 PROBE=7.013 --> OFFSET=
 The endstop value is the homed z position which is the same as the configure
 Z endstop position and here even the same as the second nozzle probe.
 
-## How to configure it
+## How To Configure It
 
 The configuration is needed to activate the plugin and to set some needed values.
 
@@ -176,10 +183,10 @@ probing_first_fast: false
 ```
 
 **CAUTION: If you use a bed mesh, the coordinates for probing on the print bed must be
-exactly the relative reference point of the mesh since this is the zero point! In this
-case, you can ommit these properties and as default the relative reference point of the
-mesh will be taken automatically (the `relative_reference_index` of the `bed_mesh` is
-required for this)!**
+exactly the relative reference point of the mesh since this is the zero point!**
+In this case, you can ommit these properties and the relative reference point of the mesh
+will be taken automatically (the `relative_reference_index` of the `bed_mesh` is required
+for this and there is no support for round bed/mesh so far)!
 
 The `switch_offset` is the already mentioned offset from the switch body (which is the
 probed position) to the actual trigger point. A starting point can be taken from the
@@ -195,14 +202,14 @@ offset.
 
 My experiences about probing speeds: for the `second_homing_speed` on Z endstop, ~~I use
 2 mm/s and for the probe, I use 2-5 mm/s.~~ Ok, now I'm on 4 mm/s - seems too slow is not
-good as well. A retract of 1mm works most of the time, but can be too little! And reducing
-the acceleration for probing maybe good too.
+good as well. A retract of 1mm works most of the time, but can be too little! It's better
+to go with 1.5mm. And reducing the acceleration for probing maybe good too.
 
 **HINT: Just to be clear, the settings about probing do not apply to the probing on the
 bed, since the script just calls the probe there to do it's job. Only the first fast down
-probing is covered by this script directly.
+probing is covered by this script directly.**
 
-## How to use it
+## How To Use It
 
 The calibration is started by using the `CALIBRATE_Z` command. There are no more parameters.
 If the probe is not attached to the print head, it will abort the calibration process
@@ -215,9 +222,9 @@ gcode:
     CG28
     M117 Z-Calibration..
     _SET_LOWER_STEPPER_CURRENT  # I lower the stepper current for homing and probing 
-    _GET_PROBE                  # a macro for fetching the probe first
+    SECURE_ATTACH_PROBE         # a macro for fetching the probe first
     BASE_CALIBRATE_Z
-    _PARK_PROBE                 # and parking it afterwards
+    SECURE_DOCK_PROBE           # and parking it afterwards
     _RESET_STEPPER_CURRENT      # resetting the stepper current
     M117
 ```

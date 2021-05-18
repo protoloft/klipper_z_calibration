@@ -82,6 +82,7 @@ class ZCalibrationHelper:
         if self.probing_samples_result is None:
             self.probing_samples_result = probe.samples_result
         # get the mesh's relative reference point
+        # a round mesh/bed would not work here so far...
         if self.probe_bed_site[0] is None or self.probe_bed_site[1] is None:
             mesh = self.printer.lookup_object('bed_mesh', default=None)
             if mesh is None or mesh.bmc.relative_reference_index is None:
