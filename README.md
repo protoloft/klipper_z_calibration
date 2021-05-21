@@ -249,7 +249,8 @@ For example, the datasheet of the D2F-5:
 And the calculation of the offset base:
 
 ```
-offset base = OP (Operation Position) - switch body --> 0.5 mm = 5.5 mm - 5 mm
+offset base = OP (Operation Position) - switch body
+     0.5 mm = 5.5 mm - 5 mm
 ```
 
 ### Experiences
@@ -262,7 +263,7 @@ good too.
 
 ## How To Test It
 
-Do not bother to much about absolute values for the calculated offsets. These can vary a lot.
+Do not bother too much about absolute values of the calculated offsets. These can vary a lot.
 Only the real position from the nozzle to the bed counts. To test this, the result of the
 calibration can be queried by `GET_POSITION` first:
 
@@ -296,7 +297,7 @@ GCode-Offset. For example like this:
 ```
 
 Check the distance to the print surface after every step. If there is a small discrepancy
-(which should be smaller as the trigger distance from the switch's datasheet), then adapt
+(which should be smaller than the offset base from the switch's datasheet), then adapt
 the "z_calibration:switch_offset" by that value. Decreasing the "switch_offset" will move
 the nozzle more away from the bed.
 
@@ -325,10 +326,10 @@ gcode:
 ```
 
 Then the `CALIBRATE_Z` command needs to be added to the `PRINT_START` macro. For this,
-just replace the second Z homing after QGL and nozzle cleaning with this macro. A second
-homing is not needed anymore.
+just replace the second Z homing after QGL and nozzle cleaning with the calibration. A
+second homing is not needed anymore.
 
-**And remove any z-offset adjustments here (like `SET_GCODE_OFFSET`) !!**
+**And remove any Z offset adjustments here (like `SET_GCODE_OFFSET`) !!**
 
 The print start sequence could look like this:
 
@@ -355,7 +356,7 @@ offset but adjusts it by the given value!
 **NOTE: Do not home Z again after running this calibration or it needs to be executed again!**
 
 Now, I wish you happy printing with an always perfect first layer - doesn't matter what you just
-modded on your printer head/bed or what nozzle and flex plate you like to use for the next
+modded on your printer's head or bed or what nozzle and flex plate you like to use for your next
 project. It's just perfect :-)
 
 ## Dislaimer
