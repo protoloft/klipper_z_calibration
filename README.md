@@ -12,7 +12,7 @@ Here is a small video for a demonstration:
 
 ### Many thanks for all your feedback to make this happen!
 
-And, if you like my work and would like to support me, please feel free to tip me here:
+And, if you like my work and would like to support me, please feel free to donate here:
 
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=L3ZN4SAWW2NMC)
 
@@ -28,8 +28,8 @@ And, if you like my work and would like to support me, please feel free to tip m
 
 # Table of Content
 
-**Please:** read this document carefully! Any details from feedbacks and trouble
-shootings are documented here!
+>:pray: **Please:** read this document carefully! Any details from feedbacks and trouble
+>shootings are documented here!
 
 - [Why This](#why-this)
 - [Requirements](#requirements)
@@ -45,7 +45,7 @@ shootings are documented here!
   - [Experiences](#experiences)
 - [How To Test It](#how-to-test-it)
 - [How To Use It](#how-to-use-it)
-- [Dislaimer](#dislaimer)
+- [Disclaimer](#disclaimer)
 
 ## Why This
 
@@ -59,7 +59,7 @@ shootings are documented here!
 - But, why can't you get both of it? Or even more.. ?
 
 And this is what I did. I just combined these two probing methods to be completely
-independent of any offset calibrations - forever. This is so amazing!
+independent of any offset calibrations - forever. This is so amazing! :tada:
 
 ## Requirements
 
@@ -79,7 +79,7 @@ independent of any offset calibrations - forever. This is so amazing!
 - (My previous Klipper macro for compensating the temperature based expansion of the
   Z endstop rod is **not** needed anymore.)
 
-> **Note:** After copying the pyhton script, a full Klipper service restart is needed to
+>:point_up: **Note:** After copying the pyhton script, a full Klipper service restart is needed to
 > load it!
 
 ## What It Does
@@ -113,7 +113,8 @@ independent of any offset calibrations - forever. This is so amazing!
 The only downside is, that the trigger point of the mag-probe cannot be probed directly.
 This is why the body of the switch is clicked on the endstop. This small offset between the
 body of the switch and the trigger point can be taken from the datasheet of the switch and
-is hardly ever influenced in any way.
+is hardly ever influenced in any way. And, this is the perfect setting for fine tuning
+the first layer.
 
 ### Interference
 
@@ -221,9 +222,9 @@ probing_first_fast: false
 #   probing sample. The default is false.
 ```
 
-**HINT: The settings about probing from this section do not apply to the probing on the
-bed, since the script just calls the probe there to do it's job. Only the first fast down
-probing is covered by this script directly.**
+>:bulb: **INFO:** The settings about probing from this section do not apply to the probing on the
+>bed, since the script just calls the probe there to do it's job. Only the first fast down
+>probing is covered by this script directly.
 
 ### Bed Mesh
 
@@ -249,7 +250,7 @@ For example, the datasheet of the D2F-5:
 And the calculation of the offset base:
 
 ```
-offset base = OP (Operation Position) - switch body
+offset base = OP (Operation Position) - switch body height
      0.5 mm = 5.5 mm - 5 mm
 ```
 
@@ -329,7 +330,7 @@ Then the `CALIBRATE_Z` command needs to be added to the `PRINT_START` macro. For
 just replace the second Z homing after QGL and nozzle cleaning with the calibration. A
 second homing is not needed anymore.
 
-**And remove any Z offset adjustments here (like `SET_GCODE_OFFSET`) !!**
+**:exclamation: And remove any Z offset adjustments here (like `SET_GCODE_OFFSET`) :exclamation:**
 
 The print start sequence could look like this:
 
@@ -353,15 +354,15 @@ start GCode, then add this to your `PRINT_START` macro **after** the Z calibrati
 Then, you can use `Z_ADJUST=0.0` in your Slicer. This does **not** reset to a fixed
 offset but adjusts it by the given value!
 
-**NOTE: Do not home Z again after running this calibration or it needs to be executed again!**
+>:pencil2: **NOTE:** Do not home Z again after running this calibration or it needs to be executed again!
 
 Now, I wish you happy printing with an always perfect first layer - doesn't matter what you just
 modded on your printer's head or bed or what nozzle and flex plate you like to use for your next
-project. It's just perfect :-)
+project. It's just perfect :smiley:
 
-## Dislaimer
+## Disclaimer
 
-It works flawlessly for me. But, at this moment it is not widely tested. And I don't know
+:construction::construction_worker: It works flawlessly for me. But, at this moment it is not widely tested. And I don't know
 much about the Klipper internals. So, I had to figure it out by myself and found this as a
 working way for me. If there are better/easier ways to accomplish it, please don't
 hesitate to contact me!
