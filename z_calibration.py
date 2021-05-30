@@ -106,7 +106,8 @@ class ZCalibrationHelper:
         # get z homing position
         for rail in rails:
             if rail.get_steppers()[0].is_active_axis('z'):
-                self.z_homing = rail.get_tag_position()
+                kin_spos = homing_state.get_stepper_trigger_positions()
+                self.z_homing = kin_spos.get(rail.get_name())
                 # get homing settings from z rail
                 if self.probing_speed is None:
                     self.probing_speed = rail.homing_speed
