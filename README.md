@@ -18,6 +18,8 @@ And, if you like my work and would like to support me, please feel free to donat
 
 # News
 
+- **v0.6**: As desired, added Moonraker Update possibility.
+- **v0.5**: Added compatibility for newer Klipper versions.
 - **v0.4**: The "calibrate_z:probe_bed_x|y" settings can be omitted in the configuration and the
   "mesh:relative_reference_index" of the bed mesh is taken as default instead.
 - **v0.3**: A new option to first probe down fast before recording the probing samples is added.
@@ -43,6 +45,7 @@ And, if you like my work and would like to support me, please feel free to donat
   - [Bed Mesh](#bed-mesh)
   - [Switch Offset](#switch-offset)
   - [Experiences](#experiences)
+  - [Moonraker Updater](#moonraker-updater)
 - [How To Test It](#how-to-test-it)
 - [How To Use It](#how-to-use-it)
 - [Disclaimer](#disclaimer)
@@ -261,6 +264,21 @@ My experiences about probing speeds: for the "stepper_z:second_homing_speed" set
 too slow is not good as well. A retract of 1 mm works most of the time, but can be too
 little! It's better to go with 1.5 mm. And reducing the acceleration for probing maybe
 good too.
+
+### Moonraker Updater
+
+Now, a update with the Moonraker update manager is possible by adding this configuration
+block to the "moonraker.conf":
+
+```
+[update_manager client klipper_z_calibration]
+type: git_repo
+path: /home/pi/klipper_z_calibration
+origin: https://github.com/protoloft/klipper_z_calibration.git
+install_script: install.sh
+```
+
+The script assumes that Klipper is in `${HOME}/klipper`.
 
 ## How To Test It
 
