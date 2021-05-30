@@ -18,7 +18,7 @@ And, if you like my work and would like to support me, please feel free to donat
 
 # News
 
-- **v0.6**: As desired, added Moonraker Update possibility.
+- **v0.6.1**: As desired, added Moonraker Update possibility.
 - **v0.5**: Added compatibility for newer Klipper versions.
 - **v0.4**: The "calibrate_z:probe_bed_x|y" settings can be omitted in the configuration and the
   "mesh:relative_reference_index" of the bed mesh is taken as default instead.
