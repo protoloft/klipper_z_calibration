@@ -70,7 +70,8 @@ independent of any offset calibrations - forever. This is so amazing! :tada:
   Voron V1/V2 enstop). It will not work with the virtual pin of the probe as endstop!
 - A magnetic switch based probe at the print head - instead of the stock inductive probe
   (e.g. [this one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9),
-  or the [KlickyProbe](https://github.com/jlas1/Klicky-Probe) for a faster approach)
+  or the drop in replacements [KlickyProbe](https://github.com/jlas1/Klicky-Probe) or
+  [this from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/All_Printers/Quickdraw_-_Magnetic_Microswitch_Z_Probe))
 - Both, the Z endstop and mag-probe are configured properly and homing and QGL are working.
 - The "z_calibration.py" file needs to be copied to the `klipper/klippy/extras` folder.
   Klipper will then load this file if it finds the "[z_calibration]" configuration section.
