@@ -18,6 +18,8 @@ And, if you like my work and would like to support me, please feel free to donat
 
 # News
 
+- **v0.7.0**: New PROBE_Z_ACCURACY command, renaming of the dummy service (**CAUTION**: the
+  configuration needs to be adapted for this!), fix in _SET_ACC Macro.
 - **v0.6.2**: As desired, added Moonraker Update possibility.
 - **v0.5**: Added compatibility for newer Klipper versions.
 - **v0.4**: The "calibrate_z:probe_bed_x|y" settings can be omitted in the configuration and the
@@ -48,6 +50,8 @@ And, if you like my work and would like to support me, please feel free to donat
   - [Moonraker Updater](#moonraker-updater)
 - [How To Test It](#how-to-test-it)
 - [How To Use It](#how-to-use-it)
+  - [Command CALIBRATE_Z](#command-calibrate_z)
+  - [Command PROBE_Z_ACCURACY](#command-probe_z_accuracy)
 - [Disclaimer](#disclaimer)
 
 ## Why This
@@ -69,9 +73,8 @@ independent of any offset calibrations - forever. This is so amazing! :tada:
 - A Z endstop where the tip of the nozzle drives on a switch (like the standard
   Voron V1/V2 enstop). It will not work with the virtual pin of the probe as endstop!
 - A magnetic switch based probe at the print head - instead of the stock inductive probe
-  (e.g. [this one from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/VORON_Printers/VORON_V2dot4/Afterburner%2BMagnetic_Probe_X_Carriage_Dual_MGN9),
-  or the drop in replacements [KlickyProbe](https://github.com/jlas1/Klicky-Probe) or
-  [this from Annex](https://github.com/Annex-Engineering/Annex-Engineering_Other_Printer_Mods/tree/master/All_Printers/Quickdraw_-_Magnetic_Microswitch_Z_Probe))
+  (e.g. [this ones from Annex](https://github.com/Annex-Engineering/Quickdraw_Probe),
+  or the popular drop in replacement [KlickyProbe](https://github.com/jlas1/Klicky-Probe))
 - Both, the Z endstop and mag-probe are configured properly and homing and QGL are working.
 - The "z_calibration.py" file needs to be copied to the `klipper/klippy/extras` folder.
   Klipper will then load this file if it finds the "[z_calibration]" configuration section.
@@ -271,18 +274,28 @@ good too.
 Now, a update with the Moonraker update manager is possible by adding this configuration
 block to the "moonraker.conf":
 
+>:point_up: **Attention:** The client was renamed from "klipper_z_calibration" to "z_calibration".
+> It must be renamed, otherwise the update will end with an error (but it still works).
+
 ```
-[update_manager client klipper_z_calibration]
+[update_manager client z_calibration]
 type: git_repo
 path: /home/pi/klipper_z_calibration
 origin: https://github.com/protoloft/klipper_z_calibration.git
 install_script: install.sh
 ```
 
-The script assumes that Klipper is in `${HOME}/klipper`.
+For this, you need to clone this repository in your home directory:
 
-> **NOTE:** Currently, there is a dummy systemd service installed to satisfy moonraker's
-> update manager.
+```
+git clone https://github.com/protoloft/klipper_z_calibration.git
+```
+
+The script assumes that Klipper is also in your home directory under
+"klipper": `${HOME}/klipper`.
+
+>:point_up: **NOTE:** Currently, there is a dummy systemd service installed
+> to satisfy moonraker's update manager.
 
 ## How To Test It
 
@@ -328,6 +341,8 @@ And finally, if you have double checked, that the calibrated offset is correct, 
 for fine tuning the "z_calibration:switch_offset" by actually printing first layer tests.
 
 ## How To Use It
+
+### Command CALIBRATE_Z
 
 The calibration is started by using the `CALIBRATE_Z` command. There are no more parameters.
 If the probe is not attached to the print head, it will abort the calibration process
@@ -381,6 +396,18 @@ offset but adjusts it by the given value!
 Now, I wish you happy printing with an always perfect first layer - doesn't matter what you just
 modded on your printer's head or bed or what nozzle and flex plate you like to use for your next
 project. It's just perfect :smiley:
+
+### Command PROBE_Z_ACCURACY
+
+There is also a PROBE_Z_ACCURACY command to test the accuracy of the Z endstop:
+
+```
+PROBE_Z_ACCURACY [PROBE_SPEED=<mm/s>] [LIFT_SPEED=<mm/s>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<mm>]
+```
+
+It calculates the maximum, minimum, average, median and standard deviation of multiple probe samles on
+the endstop by taking the configured nozzle position on the endstop. The optional parameters default
+to their equivalent setting in the z_calibration config section.
 
 ## Disclaimer
 
