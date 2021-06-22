@@ -25,23 +25,31 @@ copy_extension()
 install_script()
 {
 # Create systemd service file
-    SERVICE_FILE="${SYSTEMDDIR}/klipper_z_calibration.service"
+    SERVICE_FILE="${SYSTEMDDIR}/z_calibration.service"
     [ -f $SERVICE_FILE ] && return
+
+    OLD_SERVICE_FILE="${SYSTEMDDIR}/klipper_z_calibration.service"
+    if [ -f $OLD_SERVICE_FILE ]; then
+        sudo systemctl disable klipper_z_calibration.service
+        sudo rm "$OLD_SERVICE_FILE"
+        echo -e "CAUTION: THIS UPDATE WILL FAIL!\nYou need to rename the moonraker update confing from 'klipper_Z_calibration' to 'z_calibration'"
+    fi
+
     echo "Installing system start script..."
     sudo /bin/sh -c "cat > ${SERVICE_FILE}" << EOF
 [Unit]
-Description=Dummy Service for klipper_z_calibration plugin
+Description=Dummy Service for z_calibration plugin
 After=klipper.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/bin/bash -c 'exec -a klipper_z_calibration sleep 1'
+ExecStart=/bin/bash -c 'exec -a z_calibration sleep 1'
 [Install]
 WantedBy=multi-user.target
 EOF
 # Use systemctl to enable the systemd service script
     sudo systemctl daemon-reload
-    sudo systemctl enable klipper_z_calibration.service
+    sudo systemctl enable z_calibration.service
 }
 
 # Step 4: restarting Klipper
