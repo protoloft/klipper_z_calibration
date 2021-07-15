@@ -21,7 +21,6 @@ class ZCalibrationHelper:
         self.last_z_offset = 0.
         self.config = config
         self.printer = config.get_printer()
-        self.phoming = self.printer.lookup_object('homing')
         self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
         self.max_deviation = config.getfloat('max_deviation', 1.0, above=0.)
         self.speed = config.getfloat('speed', 50.0, above=0.)
@@ -189,7 +188,8 @@ class ZCalibrationHelper:
             pos = toolhead.get_position()
             pos[2] = z_position
             # probe
-            curpos = self.phoming.probing_move(mcu_endstop, pos, speed)
+            phoming = self.printer.lookup_object('homing')
+            curpos = phoming.probing_move(mcu_endstop, pos, speed)
             # retract
             self._move([None, None,
                         curpos[2] + self.retract_dist],
