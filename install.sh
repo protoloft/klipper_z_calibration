@@ -14,11 +14,11 @@ check_klipper()
 
 }
 
-# Step 2: copy extension to Klipper
-copy_extension()
+# Step 2: link extension to Klipper
+link_extension()
 {
-    echo "Copying extension to Klipper..."
-    cp "${SRCDIR}/z_calibration.py" "${KLIPPER_PATH}/klippy/extras/z_calibration.py"
+    echo "Linking extension to Klipper..."
+    ln -sf "${SRCDIR}/z_calibration.py" "${KLIPPER_PATH}/klippy/extras/z_calibration.py"
 }
 
 # Step 3: Install startup script
@@ -26,7 +26,10 @@ install_script()
 {
 # Create systemd service file
     SERVICE_FILE="${SYSTEMDDIR}/z_calibration.service"
-    [ -f $SERVICE_FILE ] && return
+    #[ -f $SERVICE_FILE ] && return
+    if [ -f $OLD_SERVICE_FILE ]; then
+        sudo rm "$SERVICE_FILE"
+    fi
 
     OLD_SERVICE_FILE="${SYSTEMDDIR}/klipper_z_calibration.service"
     if [ -f $OLD_SERVICE_FILE ]; then
@@ -44,6 +47,8 @@ After=klipper.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/bin/bash -c 'exec -a z_calibration sleep 1'
+ExecStopPost=/usr/sbin/service klipper restart
+TimeoutStopSec=1s
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -83,6 +88,6 @@ done
 
 # Run steps
 verify_ready
-copy_extension
+link_extension
 install_script
 restart_klipper
