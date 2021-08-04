@@ -17,7 +17,7 @@ And, if you like my work and would like to support me, please feel free to donat
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=L3ZN4SAWW2NMC)
 
 # News
-
+- **v0.8.0**: New command `CALIBRATE_Z_ACCURACY` which creates an .csv file for the new script plot_calibrate_z.py, script `plot_calibrate_z.py` to plot the measurements from the `CALIBRATE_Z_ACCURACY` command, improved terminal output.
 - **v0.7.0**: New PROBE_Z_ACCURACY command, renaming of the dummy service (**CAUTION**: the
   configuration needs to be adapted for this!), fix in _SET_ACC Macro.
 - **v0.6.2**: As desired, added Moonraker Update possibility.
@@ -52,6 +52,7 @@ And, if you like my work and would like to support me, please feel free to donat
 - [How To Use It](#how-to-use-it)
   - [Command CALIBRATE_Z](#command-calibrate_z)
   - [Command PROBE_Z_ACCURACY](#command-probe_z_accuracy)
+  - [Command CALIBRATE_Z_ACCURACY](#command-calibrate_z_accuracy)
 - [Disclaimer](#disclaimer)
 
 ## Why This
@@ -408,6 +409,28 @@ PROBE_Z_ACCURACY [PROBE_SPEED=<mm/s>] [LIFT_SPEED=<mm/s>] [SAMPLES=<count>] [SAM
 It calculates the maximum, minimum, average, median and standard deviation of multiple probe samles on
 the endstop by taking the configured nozzle position on the endstop. The optional parameters default
 to their equivalent setting in the z_calibration config section.
+
+### Command CALIBRATE_Z_ACCURACY
+
+This command probes not only the nozzle endstop but also the switch and the bed and collects the data in an .csv file. This data can be plotted using the `plot_calibrate_z.py` script. This can be helpful to find a good tolerance value based on the stdev.
+
+```
+CALIBRATE_Z_ACCURACY [PROBE_SAMPLES=<count>] [PROBE_SPEED=<mm/s>] [LIFT_SPEED=<mm/s>] [NAME=<suffix of the .csv>] [SAMPLE_RETRACT_DIST=<mm>]
+```
+
+To create the plots run 
+```
+~/klipper/scripts/calibrate_z.py /tmp/<result csv file>.csv -o /tmp/result_calibz.png
+
+```
+
+
+Nozzle plot           |  Switch plot
+:------------------------------------------------------:|:-------------------------------------------------------:
+![Floating Style](pictures/result_calibz_1_speed_nozzle.png)  |  ![Grounded Style](pictures/result_calibz_1_speed_switch.png) 
+Bed plot           |  Offset plot
+![Floating Style](pictures/result_calibz_1_speed_bed.png)  |  ![Grounded Style](pictures/result_calibz_1_speed_offset.png) 
+
 
 ## Disclaimer
 

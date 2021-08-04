@@ -19,6 +19,7 @@ copy_extension()
 {
     echo "Copying extension to Klipper..."
     cp "${SRCDIR}/z_calibration.py" "${KLIPPER_PATH}/klippy/extras/z_calibration.py"
+    cp "${SRCDIR}/plot_calibrate_z.py" "${KLIPPER_PATH}/klippy/scripts/plot_calibrate_z.py"
 }
 
 # Step 3: Install startup script
