@@ -17,18 +17,31 @@ And, if you like my work and would like to support me, please feel free to donat
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=L3ZN4SAWW2NMC)
 
 # News
-- **v0.8.0**: New command `CALIBRATE_Z_ACCURACY` which creates an .csv file for the new script plot_calibrate_z.py, script `plot_calibrate_z.py` to plot the measurements from the `CALIBRATE_Z_ACCURACY` command, improved terminal output.
-- **v0.7.0**: New PROBE_Z_ACCURACY command, renaming of the dummy service (**CAUTION**: the
-  configuration needs to be adapted for this!), fix in _SET_ACC Macro.
-- **v0.6.2**: As desired, added Moonraker Update possibility.
-- **v0.5**: Added compatibility for newer Klipper versions.
-- **v0.4**: The "calibrate_z:probe_bed_x|y" settings can be omitted in the configuration and the
+- **v0.9.0**: 
+  - New command `CALIBRATE_Z_ACCURACY` which creates an .csv file for the new script plot_calibrate_z.py, 
+  script `plot_calibrate_z.py` to plot the measurements from the `CALIBRATE_Z_ACCURACY` command, improved terminal output.
+- **v0.8.0**
+  - New configurations for executing G-Code commands (useful for V1 users)
+  - Bugfix for configuring the z_calibration too early (many thanks to Frix-x),
+  - New example configurations
+  - **Action needed** for the Moonraker update, see: [Moonraker Updater](#moonraker-updater)
+- **v0.7.0**
+  - New "PROBE_Z_ACCURACY" command
+  - Eenaming of the dummy service (**CAUTION**: the configuration needs to be adapted for this!)
+  - Fix in "_SET_ACC" Macro
+- **v0.6.2**
+  - As desired, added Moonraker Update possibility.
+- **v0.5**
+  - Added compatibility for newer Klipper versions.
+- **v0.4**
+  - The "calibrate_z:probe_bed_x|y" settings can be omitted in the configuration and the
   "mesh:relative_reference_index" of the bed mesh is taken as default instead.
-- **v0.3**: A new option to first probe down fast before recording the probing samples is added.
-  And all indirect properties from other sections can be customized now.
-- **v0.2**: The probing repeatability is now increased dramatically by using the probing
-  procedure instead of the homing procedure! But note, the offset will change slightly,
-  if Z is homed again or temperatures changes - but this is as intended!
+- **v0.3**
+  - A new option to first probe down fast before recording the probing samples is added.
+  - And all indirect properties from other sections can be customized now.
+- **v0.2**
+  - The probing repeatability is now increased dramatically by using the probing
+    procedure instead of the homing procedure!
 
 # Table of Content
 
@@ -46,7 +59,6 @@ And, if you like my work and would like to support me, please feel free to donat
   - [Configurations](#configurations)
   - [Bed Mesh](#bed-mesh)
   - [Switch Offset](#switch-offset)
-  - [Experiences](#experiences)
   - [Moonraker Updater](#moonraker-updater)
 - [How To Test It](#how-to-test-it)
 - [How To Use It](#how-to-use-it)
@@ -164,6 +176,10 @@ move the nozzle beyond this offset.
 
 The following configuration is needed to activate the plugin and to set some needed values:
 
+>:bulb: **NEW:** If the nozzle cannot be probed with the mag-probe attached (Voron V1), then
+> it's now possible to detach (start_gcode), attach before probing the switch (before_switch_gcode)
+> and even detaching it at the end (end_gcode).
+
 ```
 [z_calibration]
 probe_nozzle_x:
@@ -228,10 +244,23 @@ probing_first_fast: false
 #   If true, the first probing is done faster by the probing speed.
 #   This is to get faster down and the result is not recorded as a
 #   probing sample. The default is false.
+start_gcode:
+#   A list of G-Code commands to execute prior to each calibration command.
+#   See docs/Command_Templates.md for G-Code format. This can be used to
+#   attach the probe.
+before_switch_gcode:
+#   A list of G-Code commands to execute prior to each probing on the
+#   mag-probe. See docs/Command_Templates.md for G-Code format. This can be
+#   used to attach the probe after probing on the nozzle and before probing
+#   on the mag-probe.
+end_gcode:
+#   A list of G-Code commands to execute after each calibration command.
+#   See docs/Command_Templates.md for G-Code format. This can be used to
+#   detach the probe afterwards.
 ```
 
 >:bulb: **INFO:** The settings about probing from this section do not apply to the probing on the
->bed, since the script just calls the probe there to do it's job. Only the first fast down
+>bed, since the script just calls the probe to do it's job at this point. Only the first fast down
 >probing is covered by this script directly.
 
 ### Bed Mesh
@@ -262,21 +291,14 @@ offset base = OP (Operation Position) - switch body height
      0.5 mm = 5.5 mm - 5 mm
 ```
 
-### Experiences
-
-My experiences about probing speeds: for the "stepper_z:second_homing_speed" setting,
-~~I use 2 mm/s and for the "probe:speed", I use 2-5 mm/s.~~ Ok, now I'm on 4 mm/s - seems
-too slow is not good as well. A retract of 1 mm works most of the time, but can be too
-little! It's better to go with 1.5 mm. And reducing the acceleration for probing maybe
-good too.
-
 ### Moonraker Updater
+
+>:point_up: **Attention:** If this was already configure prior to version 0.8,
+> a manual execution of the "install.sh" script is needed to update the soft link and
+> the dummy service definition like: `/home/pi/klipper_z_calibration/install.sh`!
 
 Now, a update with the Moonraker update manager is possible by adding this configuration
 block to the "moonraker.conf":
-
->:point_up: **Attention:** The client was renamed from "klipper_z_calibration" to "z_calibration".
-> It must be renamed, otherwise the update will end with an error (but it still works).
 
 ```
 [update_manager client z_calibration]
@@ -286,7 +308,7 @@ origin: https://github.com/protoloft/klipper_z_calibration.git
 install_script: install.sh
 ```
 
-For this, you need to clone this repository in your home directory:
+For this, you need to clone this repository in your home directory (/home/pi):
 
 ```
 git clone https://github.com/protoloft/klipper_z_calibration.git
@@ -296,7 +318,7 @@ The script assumes that Klipper is also in your home directory under
 "klipper": `${HOME}/klipper`.
 
 >:point_up: **NOTE:** Currently, there is a dummy systemd service installed
-> to satisfy moonraker's update manager.
+> to satisfy moonraker's update manager which also restarts Klipper.
 
 ## How To Test It
 
@@ -347,7 +369,7 @@ for fine tuning the "z_calibration:switch_offset" by actually printing first lay
 
 The calibration is started by using the `CALIBRATE_Z` command. There are no more parameters.
 If the probe is not attached to the print head, it will abort the calibration process
-(if configured normaly closed). So, macros can help here to attach and dock the probe like
+(if configured normaly closed). So, macros can help here to attach and detach the probe like
 this:
 
 ```
@@ -357,9 +379,9 @@ gcode:
     CG28
     M117 Z-Calibration..
     _SET_LOWER_STEPPER_CURRENT  # I lower the stepper current for homing and probing 
-    SECURE_ATTACH_PROBE         # a macro for fetching the probe first
+    ATTACH_PROBE                # a macro for fetching the probe first
     BASE_CALIBRATE_Z
-    SECURE_DOCK_PROBE           # and parking it afterwards
+    DETACH_PROBE                # and parking it afterwards
     _RESET_STEPPER_CURRENT      # resetting the stepper current
     M117
 ```

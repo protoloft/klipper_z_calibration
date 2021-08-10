@@ -11,7 +11,7 @@ ERROR_BED_SITE_OR_MESH = ("Either configure probe_bed_x and probe_bed_y"
                           " or configure a mesh with a"
                           " relative_reference_index"
                           " for calibrate_z module!")
-ERROR_NO_PROBE = "Probe switch not closed - Probe not attached?"
+#ERROR_NOT_ATTACHED = "Probe switch not closed - Probe not attached?"
 class ZCalibrationHelper:
     def __init__(self, config):
         self.state = None
@@ -55,6 +55,12 @@ class ZCalibrationHelper:
             config.getfloat('probe_bed_y', None),
             None,
         ]
+        gcode_macro = self.printer.load_object(config, 'gcode_macro')
+        self.start_gcode = gcode_macro.load_template(config, 'start_gcode', '')
+        self.switch_gcode = gcode_macro.load_template(config,
+                                                      'before_switch_gcode',
+                                                      '')
+        self.end_gcode = gcode_macro.load_template(config, 'end_gcode', '')
         self.query_endstops = self.printer.load_object(config,
                                                        'query_endstops')
         self.printer.register_event_handler("klippy:connect",
@@ -95,6 +101,8 @@ class ZCalibrationHelper:
             self.lift_speed = probe.lift_speed
         if self.clearance is None:
             self.clearance = probe.z_offset * 2
+        if self.clearance == 0:
+            self.clearance = 20 # defaults to 20mm
         if self.samples_result is None:
             self.samples_result = probe.samples_result
         # get the mesh's relative reference point
@@ -112,9 +120,10 @@ class ZCalibrationHelper:
         # get z homing position
         for rail in rails:
             if rail.get_steppers()[0].is_active_axis('z'):
-                kin_spos = homing_state.get_stepper_trigger_positions()
-                self.z_homing = kin_spos.get(rail.get_name())
+                #kin_spos = homing_state.get_stepper_trigger_positions()
+                #self.z_homing = kin_spos.get(rail.get_name())
                 # get homing settings from z rail
+                self.z_homing = rail.position_endstop
                 if self.probing_speed is None:
                     self.probing_speed = rail.homing_speed
                 if self.second_speed is None:
@@ -131,12 +140,14 @@ class ZCalibrationHelper:
         if self.state is not None:
             raise self.printer.command_error("Already performing CALIBRATE_Z")
             return
+
         # check if probe is attached and the switch is closing it
         probe = self.printer.lookup_object('probe')
         lm_time = self.printer.lookup_object('toolhead').get_last_move_time()
         if probe.mcu_probe.query_endstop(lm_time):
             raise self.printer.command_error(ERROR_NO_PROBE)
             return
+
         self._log_config()
         state = CalibrationState(self, gcmd)
         state.calibrate_z()
@@ -395,21 +406,29 @@ class CalibrationState:
         # reset gcode z offset to 0
         gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
                                                       "SET_GCODE_OFFSET",
-                                                      {'Z': 0.0, 'MOVE': '1'})
+                                                      {'Z': 0.0})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
         # set new gcode z offset
         gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
                                                       "SET_GCODE_OFFSET",
-                                                      {'Z_ADJUST': offset,
-                                                       'MOVE': '1'})
+                                                      {'Z_ADJUST': offset})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
     def calibrate_z(self):
+        self.helper.start_gcode.run_gcode_from_command()
         # probe the nozzle
         nozzle_zero = self._probe_on_z_endstop(
             self.helper.probe_nozzle_site, 'Nozzle')
         # probe the probe-switch
-        switch_zero = self._probe_on_z_endstop(
-            self.helper.probe_switch_site, 'Switch')
+
+        self.helper.switch_gcode.run_gcode_from_command()
+        # check if probe is attached and the switch is closing it
+        #time = self.helper.printer.lookup_object('toolhead').get_last_move_time()
+        #probe = self.helper.printer.lookup_object('probe')
+        #if probe.mcu_probe.query_endstop(time):
+        #    raise self.helper.printer.command_error(ERROR_NOT_ATTACHED)
+        #    return
+        switch_zero = self._probe_on_z_endstop(self.helper.probe_switch_site, 'Switch')
+
         # probe position on bed
         probe_zero = self._probe_on_bed(self.helper.probe_bed_site)
         # move up by retract_dist
@@ -440,5 +459,6 @@ class CalibrationState:
         # set states
         self.helper.last_state = True
         self.helper.last_z_offset = offset
+        self.helper.end_gcode.run_gcode_from_command()
 def load_config(config):
     return ZCalibrationHelper(config)
