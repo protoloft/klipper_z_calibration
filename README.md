@@ -169,6 +169,23 @@ it is advisable to configure a safe value here to not crash the nozzle into the 
 plate by accident. The plugin only changes the GCode offset and it's still possible to
 move the nozzle beyond this offset.
 
+### Installation
+
+To install the plugin, you first need to clone this repository in your home directory (/home/pi):
+
+```
+git clone https://github.com/protoloft/klipper_z_calibration.git
+```
+
+Afterwards, you will need to run the installation script to add the plugin to klipper:
+
+```
+/home/pi/klipper_z_calibration/install.sh
+```
+
+This script assumes that Klipper is also in your home directory under
+"klipper": `${HOME}/klipper`.
+
 ### Configurations
 
 The following configuration is needed to activate the plugin and to set some needed values:
@@ -304,15 +321,6 @@ path: /home/pi/klipper_z_calibration
 origin: https://github.com/protoloft/klipper_z_calibration.git
 install_script: install.sh
 ```
-
-For this, you need to clone this repository in your home directory (/home/pi):
-
-```
-git clone https://github.com/protoloft/klipper_z_calibration.git
-```
-
-The script assumes that Klipper is also in your home directory under
-"klipper": `${HOME}/klipper`.
 
 >:point_up: **NOTE:** Currently, there is a dummy systemd service installed
 > to satisfy moonraker's update manager which also restarts Klipper.
