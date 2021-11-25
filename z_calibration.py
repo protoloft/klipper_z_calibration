@@ -108,11 +108,6 @@ class ZCalibrationHelper:
             mesh = self.printer.lookup_object('bed_mesh', default=None)
             if mesh is None or mesh.bmc.relative_reference_index is None:
                 raise self.printer.config_error(ERROR_BED_SITE_OR_MESH)
-            rri = mesh.bmc.relative_reference_index
-            self.probe_bed_site[0] = mesh.bmc.points[rri][0]
-            self.probe_bed_site[1] = mesh.bmc.points[rri][1]
-        logging.debug("Z-CALIBRATION probe_bed_x=%.3f probe_bed_y=%.3f"
-                      % (self.probe_bed_site[0], self.probe_bed_site[1]))
     def handle_home_rails_end(self, homing_state, rails):
         # get z homing position
         for rail in rails:
@@ -137,6 +132,17 @@ class ZCalibrationHelper:
         if self.state is not None:
             raise self.printer.command_error("Already performing CALIBRATE_Z")
             return
+        if self.config.getfloat('probe_bed_x', None) is None \
+            or self.config.getfloat('probe_bed_y', None) is None:
+            try:
+                mesh = self.printer.lookup_object('bed_mesh', default=None)
+                rri = mesh.bmc.relative_reference_index    
+                self.probe_bed_site = mesh.bmc.points[rri]
+                logging.debug("Z-CALIBRATION probe_bed_x=%.3f probe_bed_y=%.3f"
+                            % (self.probe_bed_site[0], self.probe_bed_site[1]))
+            except:
+                raise self.printer.config_error(ERROR_BED_SITE_OR_MESH)
+
         self._log_config()
         state = CalibrationState(self, gcmd)
         state.calibrate_z()
