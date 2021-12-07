@@ -134,12 +134,16 @@ class ZCalibrationHelper:
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzles offset"
                             " to the print surface")
     def cmd_CALIBRATE_Z(self, gcmd):
-        if self.state is not None:
-            raise self.printer.command_error("Already performing CALIBRATE_Z")
-            return
-        self._log_config()
-        state = CalibrationState(self, gcmd)
-        state.calibrate_z()
+		probe_bed_x = gcmd.get_float("PROBE_BED_X", self.probe_bed_site[0], 0)
+		probe_bed_y = gcmd.get_float("PROBE_BED_Y", self.probe_bed_site[1], 0)
+		probesite = [probe_bed_x,probe_bed_y,None,]
+		if self.state is not None:
+		
+			raise self.printer.command_error("Already performing CALIBRATE_Z")
+			return
+		self._log_config()
+		state = CalibrationState(self, gcmd)
+		state.calibrate_z(probesite)
     cmd_PROBE_Z_ACCURACY_help = "Probe Z-Endstop accuracy at Nozzle-Endstop position"
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
         speed = gcmd.get_float("PROBE_SPEED", self.second_speed, above=0.)
@@ -311,7 +315,7 @@ class CalibrationState:
                                                       "SET_GCODE_OFFSET",
                                                       {'Z_ADJUST': offset})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
-    def calibrate_z(self):
+   def calibrate_z(self,bedsite):
         self.helper.start_gcode.run_gcode_from_command()
         # probe the nozzle
         nozzle_zero = self._probe_on_z_endstop(self.helper.probe_nozzle_site)
@@ -325,7 +329,7 @@ class CalibrationState:
         #    return
         switch_zero = self._probe_on_z_endstop(self.helper.probe_switch_site)
         # probe position on bed
-        probe_zero = self._probe_on_bed(self.helper.probe_bed_site)
+        probe_zero = self._probe_on_bed(bedsite)
         # move up by retract_dist
         self.helper._move([None, None,
                            probe_zero + self.helper.retract_dist],
