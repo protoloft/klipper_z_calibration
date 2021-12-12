@@ -198,7 +198,7 @@ class ZCalibrationHelper:
             "average %.6f, median %.6f, standard deviation %.6f" % (
                 max_value, min_value, range_value, avg_value, median, sigma))
 
-    cmd_CALIBRATE_Z_ACCURACY_help = ("Creates an csv file with accurancy data for the"
+    cmd_CALIBRATE_Z_ACCURACY_help = ("Creates an csv file with accuracy data for the"
                                     " nozzle, switch and bed probed points")
     def cmd_CALIBRATE_Z_ACCURACY(self, gcmd):
         probe_sample_count = gcmd.get_int("PROBE_SAMPLES", self.samples, minval=1)
@@ -220,36 +220,30 @@ class ZCalibrationHelper:
                           % (probe_sample_count, speed, lift_speed))
         # move to z-endstop position
 
-        # gcmd.respond_info("PROBE_ACCURACY at X:%.3f Y:%.3f Z:%.3f"
-        #                   " (samples=%d retract=%.3f"
-        #                   " speed=%.1f lift_speed=%.1f)\n"
-        #                   % (pos[0], pos[1], pos[2],
-        #                      sample_count, self.retract_dist,
-        #                      self.speed, self.lift_speed))
-        # Probe bed sample_count times
-        # [NOZZLE, SWITCH, BED]
+        # Resulting elements: [NOZZLE, SWITCH, BED]
         positions = []
 
-        # First probe the nozzle
+        # First take accuracy measurements for the nozzle probing.
         nozzle_pos = self._probe_acc(self.z_endstop, probe_sample_count, speed, lift_speed, self.probe_nozzle_site, 'Nozzle')
         positions.append(nozzle_pos)
 
-        # Probe the switch
+        # 2nd take accuracy measurements for the switch probing.
         switch_pos = self._probe_acc(self.z_endstop, probe_sample_count, speed, lift_speed, self.probe_switch_site, 'Switch')
         positions.append(switch_pos)
-    
-        probe = self.printer.lookup_object('probe')
 
+        # calculate bed position by using the probe's offsets
         probe_offsets = probe.get_offsets()
         probe_site = list(self.probe_bed_site)
         probe_site[0] -= probe_offsets[0]
         probe_site[1] -= probe_offsets[1]
 
+        # lastly take accuracy measurements for the probe probing the bed.
         bed_pos = self._probe_acc(probe.mcu_probe, probe_sample_count, speed, lift_speed, probe_site, 'Probe')
         positions.append(bed_pos)
         
         output = os.path.join("/tmp", 'result_z_calib_%ix_%s.csv' %(probe_sample_count, name_suffix))
 
+        # Finally write the result to disk!
         try:
             with open(output, "w") as csvfile:
                 csvfile.write("nozzle,switch,bed\n")

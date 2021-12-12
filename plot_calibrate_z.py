@@ -10,7 +10,7 @@ import matplotlib
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
                              '..', 'klippy', 'extras'))
 
-MAX_TITLE_LENGTH = 65
+MAX_TITLE_LENGTH = 75
 
 
 def parse_log(logname):
@@ -24,7 +24,7 @@ def cal_offset(singleSet):
         row = singleSet[i]
         toAppend = np.append(toAppend, [row[2]-(row[1]-row[0])])
 
-    return np.insert(singleSet, 3, toAppend, axis = 1)
+    return np.insert(singleSet, 3, toAppend, axis=1)
 
 
 def plot_data(lognames, data, name, color='blue'):
@@ -33,7 +33,7 @@ def plot_data(lognames, data, name, color='blue'):
     fontP.set_size('x-small')
     data_len = len(data)
     fig, ax = matplotlib.pyplot.subplots()
-    ax.set_xlabel('Probed Point')
+    ax.set_xlabel('Sample# (Total:%d)' % (data_len))
     ax.set_ylabel('Z-Position')
 
     dStd = np.std(data)
@@ -42,12 +42,13 @@ def plot_data(lognames, data, name, color='blue'):
     dMedian = np.median(data)
     dAvg = np.average(data)
 
-    txt = '%s min:%.3f max: %.3f avg: %.3f median: %.3f std: %.3f' % (
-        name, dMin, dMax, dAvg, dMedian, dStd)
+    txt = '%s min:%.3f max: %.3f range: %.3f avg: %.3f median: %.3f std: %.3f' % (
+        name, dMin, dMax, dMax-dMin, dAvg, dMedian, dStd)
     print(txt)
     ax.plot(range(data_len), data, label=txt, color=color)
 
-    title = "Z-Probe accuracy (%s)" % (', '.join(lognames))
+    title = "%s, Z-Probe accuracy measurements (%s)" % (
+        name, ', '.join(lognames))
     ax.set_title("\n".join(wrap(title, MAX_TITLE_LENGTH)))
     ax.xaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(5))
     ax.yaxis.set_minor_locator(matplotlib.ticker.AutoMinorLocator())
@@ -88,15 +89,19 @@ def main():
         opts.error("Incorrect number of arguments")
 
     # Parse data
+    # here we handle parsing of multiple input files! returns [dataOfFileOne, dataOfFileTwo...]
     parsedData = [parse_log(fn) for fn in args]
+    # single is of from sing: [[nozzle, switch, bed],...] transforms to -> [[nozzle, switch, bed, offset]]
     parsedData = [cal_offset(single) for single in parsedData]
 
     setup_matplotlib(options.output is not None)
 
     fig1 = plot_data(args, [i[0] for i in parsedData[0]], 'Nozzle')
-    fig2 = plot_data(args, [i[1] for i in parsedData[0]], 'Switch', color='purple')
+    fig2 = plot_data(args, [i[1]
+                     for i in parsedData[0]], 'Switch', color='purple')
     fig3 = plot_data(args, [i[2] for i in parsedData[0]], 'Bed', color='green')
-    fig4 = plot_data(args, [i[3] for i in parsedData[0]], 'Offset', color='red')
+    fig4 = plot_data(args, [i[3]
+                     for i in parsedData[0]], 'Offset', color='red')
 
     # Show graph
     if options.output is None:
@@ -105,15 +110,14 @@ def main():
         head, tail = os.path.split(options.output)
         filename = os.path.splitext(tail)
 
-
         fig1.set_size_inches(8, 6)
-        fig1.savefig(os.path.join(head,filename[0] + '_nozzle'+filename[1]))
+        fig1.savefig(os.path.join(head, filename[0] + '_nozzle'+filename[1]))
         fig2.set_size_inches(8, 6)
-        fig2.savefig(os.path.join(head,filename[0] + '_switch'+filename[1]))
+        fig2.savefig(os.path.join(head, filename[0] + '_switch'+filename[1]))
         fig3.set_size_inches(8, 6)
-        fig3.savefig(os.path.join(head,filename[0] + '_bed'+filename[1]))        
+        fig3.savefig(os.path.join(head, filename[0] + '_bed'+filename[1]))
         fig4.set_size_inches(8, 6)
-        fig4.savefig(os.path.join(head,filename[0] + '_offset'+filename[1]))
+        fig4.savefig(os.path.join(head, filename[0] + '_offset'+filename[1]))
 
 
 if __name__ == '__main__':
