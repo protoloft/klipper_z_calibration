@@ -28,7 +28,7 @@ install_script()
 # Create systemd service file
     SERVICE_FILE="${SYSTEMDDIR}/z_calibration.service"
     #[ -f $SERVICE_FILE ] && return
-    if [ -f $OLD_SERVICE_FILE ]; then
+    if [ -f $SERVICE_FILE ]; then
         sudo rm "$SERVICE_FILE"
     fi
 
