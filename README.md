@@ -442,7 +442,7 @@ CALIBRATE_Z_ACCURACY [PROBE_SAMPLES=<count>] [PROBE_SPEED=<mm/s>] [LIFT_SPEED=<m
 
 To create the plots run 
 ```
-~/klipper/scripts/calibrate_z.py /tmp/<result csv file>.csv -o /tmp/result_calibz.png
+~/klipper/scripts/plot_calibrate_z.py /tmp/<result csv file>.csv -o /tmp/result_calibz.png
 
 ```
 

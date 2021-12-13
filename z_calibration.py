@@ -75,7 +75,7 @@ class ZCalibrationHelper:
                                     desc=self.cmd_PROBE_Z_ACCURACY_help)
         self.gcode.register_command('CALIBRATE_Z_ACCURACY',
                                     self.cmd_CALIBRATE_Z_ACCURACY,
-                                    desc=self.cmd_CALIBRATE_Z_help)
+                                    desc=self.cmd_CALIBRATE_Z_ACCURACY_help)
     def get_status(self, eventtime):
         return {'last_query': self.last_state,
                 'last_z_offset': self.last_z_offset}
@@ -141,13 +141,6 @@ class ZCalibrationHelper:
             raise self.printer.command_error("Already performing CALIBRATE_Z")
             return
 
-        # check if probe is attached and the switch is closing it
-        probe = self.printer.lookup_object('probe')
-        lm_time = self.printer.lookup_object('toolhead').get_last_move_time()
-        if probe.mcu_probe.query_endstop(lm_time):
-            raise self.printer.command_error(ERROR_NO_PROBE)
-            return
-
         self._log_config()
         state = CalibrationState(self, gcmd)
         state.calibrate_z()
@@ -209,12 +202,8 @@ class ZCalibrationHelper:
         if self.state is not None:
             raise self.printer.command_error("Already performing CALIBRATE_Z_ACCURACY")
             return
-        # check if probe is attached and the switch is closing it
-        probe = self.printer.lookup_object('probe')
-        lm_time = self.printer.lookup_object('toolhead').get_last_move_time()
-        if probe.mcu_probe.query_endstop(lm_time):
-            raise self.printer.command_error(ERROR_NO_PROBE)
-            return
+
+        self.start_gcode.run_gcode_from_command()
         
         gcmd.respond_info("CALIBRATE_Z_ACCURACY samples = %i probe_speed = %.1f lift_speed = %.1f \n"
                           % (probe_sample_count, speed, lift_speed))
@@ -227,10 +216,14 @@ class ZCalibrationHelper:
         nozzle_pos = self._probe_acc(self.z_endstop, probe_sample_count, speed, lift_speed, self.probe_nozzle_site, 'Nozzle')
         positions.append(nozzle_pos)
 
+
+        self.switch_gcode.run_gcode_from_command()
+
         # 2nd take accuracy measurements for the switch probing.
         switch_pos = self._probe_acc(self.z_endstop, probe_sample_count, speed, lift_speed, self.probe_switch_site, 'Switch')
         positions.append(switch_pos)
 
+        probe = self.printer.lookup_object('probe')
         # calculate bed position by using the probe's offsets
         probe_offsets = probe.get_offsets()
         probe_site = list(self.probe_bed_site)
@@ -241,6 +234,8 @@ class ZCalibrationHelper:
         bed_pos = self._probe_acc(probe.mcu_probe, probe_sample_count, speed, lift_speed, probe_site, 'Probe')
         positions.append(bed_pos)
         
+        self.end_gcode.run_gcode_from_command()
+
         output = os.path.join("/tmp", 'result_z_calib_%ix_%s.csv' %(probe_sample_count, name_suffix))
 
         # Finally write the result to disk!

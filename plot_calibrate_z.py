@@ -1,14 +1,11 @@
 #!/usr/bin/env python2
 from __future__ import print_function
-import optparse
-import os
-import ntpath
-import sys
+import importlib, optparse, os, sys
 from textwrap import wrap
-import numpy as np
-import matplotlib
+import numpy as np, matplotlib
+
 sys.path.append(os.path.join(os.path.dirname(os.path.realpath(__file__)),
-                             '..', 'klippy', 'extras'))
+                             '..', 'klippy'))
 
 MAX_TITLE_LENGTH = 75
 
