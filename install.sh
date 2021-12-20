@@ -19,6 +19,7 @@ link_extension()
 {
     echo "Linking extension to Klipper..."
     ln -sf "${SRCDIR}/z_calibration.py" "${KLIPPER_PATH}/klippy/extras/z_calibration.py"
+    ln -sf "${SRCDIR}/plot_calibrate_z.py" "${KLIPPER_PATH}/klippy/scripts/plot_calibrate_z.py"
 }
 
 # Step 3: Install startup script
