@@ -10,7 +10,7 @@ together do **not** affect the first layer at all.
 Here is a small video for a demonstration:
 [https://streamable.com/wclrmc](https://streamable.com/wclrmc)
 
-### Many thanks for all your feedback to make this happen!
+### Many thanks for all your feedback to make this happen
 
 And, if you like my work and would like to support me, please feel free to donate here:
 
@@ -52,6 +52,7 @@ And, if you like my work and would like to support me, please feel free to donat
   - [Drawback](#drawback)
   - [Interference](#interference)
   - [Example](#example)
+- [How To Install It](#how-to-install-it)
 - [How To Configure It](#how-to-configure-it)
   - [Preconditions](#preconditions)
   - [Configurations](#configurations)
@@ -153,6 +154,15 @@ Z-CALIBRATION: ENDSTOP=-0.300 NOZZLE=-0.300 SWITCH=6.208 PROBE=7.013 --> OFFSET=
 The endstop value is the homed Z position which is always zero or the configure
 "stepper_z:position_endstop" setting - and in this case, it's even the same as the
 probed nozzle hight.
+
+## How To Install It
+
+To install this plugin, you need to copy the `z_calibration.py` file into the `extras`
+folder of klipper. Like:
+> klipper/klippy/extras/z_calibration.py
+
+An alternative would be to clone this repo and run the `install.sh` script (more on
+this in the [Moonraker Updater](#moonraker-updater) section).
 
 ## How To Configure It
 
@@ -315,7 +325,8 @@ The script assumes that Klipper is also in your home directory under
 "klipper": `${HOME}/klipper`.
 
 >:point_up: **NOTE:** Currently, there is a dummy systemd service installed
-> to satisfy moonraker's update manager which also restarts Klipper.
+> to satisfy moonraker's update manager which also restarts Klipper after an
+> update.
 
 ## How To Test It
 
