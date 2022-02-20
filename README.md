@@ -316,6 +316,26 @@ offset base = OP (Operation Position) - switch body height
      0.5 mm = 5.5 mm - 5 mm
 ```
 
+#### How About A Negative Switch Offset?
+
+First of all, there cannot be a negative switch_offset! If the switch_offset is already
+really small after tuning it and the nozzle is still too close to the bed, then there is
+something wrong measuring the probe's body. The following image illustrates this context:
+
+![switch offset](pictures/negative-switch-offset.png)
+
+So, please check your endstop, the rod of the endstop and the position touching the body
+of the probe's switch!
+
+**:exclamation: Please, do NOT drive the endstop pin on the switch's actuator directly -
+otherwise you do it on your own risk and I will reject any support request :exclamation:**
+
+If you do so, a correct or at least a working measured hight at the switch is all up to the
+different forces in this system. But forces can change due to many reasons. The best case
+would be that the actuator is pushed all the way in until the pin touches the body of the
+switch - before the endstop is triggered! But it can also be anything in between...
+So, there is no reason to not touch the body directly in a safe and robust way :thumbsup:
+
 ### Moonraker Updater
 
 >:point_up: **Attention:** If this was already configure prior to version 0.8,
