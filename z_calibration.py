@@ -102,8 +102,6 @@ class ZCalibrationHelper:
             self.clearance = 20 # defaults to 20mm
         if self.samples_result is None:
             self.samples_result = probe.samples_result
-        # get the mesh's relative reference point
-        # a round mesh/bed would not work here so far...
         if self.probe_bed_site[0] is None or self.probe_bed_site[1] is None:
             mesh = self.printer.lookup_object('bed_mesh', default=None)
             if mesh is None or mesh.bmc.relative_reference_index is None:
@@ -131,9 +129,10 @@ class ZCalibrationHelper:
     def cmd_CALIBRATE_Z(self, gcmd):
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
-
+        # get the mesh's relative reference point
+        # a round mesh/bed would not work here so far...
         if self.config.getfloat('probe_bed_x', None) is None \
-            or self.config.getfloat('probe_bed_y', None) is None:
+                or self.config.getfloat('probe_bed_y', None) is None:
             try:
                 mesh = self.printer.lookup_object('bed_mesh', default=None)
                 rri = mesh.bmc.relative_reference_index    
@@ -142,11 +141,11 @@ class ZCalibrationHelper:
                             % (self.probe_bed_site[0], self.probe_bed_site[1]))
             except:
                 raise self.printer.config_error(ERROR_BED_SITE_OR_MESH)
-
         self._log_config()
         state = CalibrationState(self, gcmd)
         state.calibrate_z()
-    cmd_PROBE_Z_ACCURACY_help = "Probe Z-Endstop accuracy at Nozzle-Endstop position"
+    cmd_PROBE_Z_ACCURACY_help = ("Probe Z-Endstop accuracy at"
+                                " Nozzle-Endstop position")
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
@@ -275,7 +274,8 @@ class CalibrationState:
         positions = []
         while len(positions) < self.helper.samples:
             # probe with second probing speed
-            curpos = self.helper._probe(self.z_endstop, self.helper.position_min,
+            curpos = self.helper._probe(self.z_endstop,
+                                        self.helper.position_min,
                                         self.helper.second_speed)
             positions.append(curpos[:3])
             # check tolerance
