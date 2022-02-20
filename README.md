@@ -14,7 +14,7 @@ Here is a small video for a demonstration:
 
 Then, you can find it [here](https://github.com/pRINTERnOODLE/Auto-Z-calibration-for-RRF-3.3-or-later-and-Klicky-Probe) from pRINTERnOODLE - really fantastic to see this :tada:
 
-## Many thanks for all your feedback to make this happen
+### Many thanks for all your feedback to make this happen
 
 And, if you like my work and would like to support me, please feel free to donate here:
 
@@ -22,6 +22,12 @@ And, if you like my work and would like to support me, please feel free to donat
 
 # News
 
+- **v0.8.1**
+  - Now, the relative reference index (RRI) of the bed mesh is read everytime the calibration
+    starts. So, feel free to use any adaptive mesh macro :tada:
+  - Checks for homed axes and attached probe just before using it
+  - A new Z-Tilt macro in the examples
+  - Improvements of the documentation for installation, configuration and switch_offset
 - **v0.8.0**
   - New configurations for executing G-Code commands (useful for V1 users)
   - Bugfix for configuring the z_calibration too early (many thanks to Frix-x),
@@ -56,6 +62,7 @@ And, if you like my work and would like to support me, please feel free to donat
   - [Drawback](#drawback)
   - [Interference](#interference)
   - [Example](#example)
+  - [Thermal Frame Expansion](#thermal-frame-expansion)
 - [How To Install It](#how-to-install-it)
 - [How To Configure It](#how-to-configure-it)
   - [Preconditions](#preconditions)
@@ -87,7 +94,7 @@ independent of any offset calibrations - forever. This is so amazing! :tada:
 
 - A Z endstop where the tip of the nozzle drives on a switch (like the standard
   Voron V1/V2 enstop). **It will not work with the virtual pin of the probe as endstop!**
-  It does not require a
+  It is not essential to have a Voron printer for this - but this kind of endstop.
 - A magnetic switch based probe at the print head - instead of the stock inductive probe
   (e.g. [this ones from Annex](https://github.com/Annex-Engineering/Quickdraw_Probe),
   or the popular drop in replacement [KlickyProbe](https://github.com/jlas1/Klicky-Probe)
@@ -161,7 +168,7 @@ The endstop value is the homed Z position which is always zero or the configure
 "stepper_z:position_endstop" setting - and in this case, it's even the same as the
 probed nozzle hight.
 
-### For the thermal frame expansion
+### Thermal Frame Expansion
 
 There is a further Klipper plugin for adapting the Z height continuously to the thermal
 expansion of the printer frame after starting a print. It is from alchemyEngine and
@@ -327,8 +334,8 @@ something wrong measuring the probe's body. The following image illustrates this
 So, please check your endstop, the rod of the endstop and the position touching the body
 of the probe's switch!
 
-**:exclamation: Please, do NOT drive the endstop pin on the switch's actuator directly -
-otherwise you do it on your own risk and I will reject any support request :exclamation:**
+> **:exclamation: Please, do NOT drive the endstop pin on the switch's actuator directly!
+> Otherwise, you do it on your own risk and I will reject any request for support!**
 
 If you do so, a correct or at least a working measured hight at the switch is all up to the
 different forces in this system. But forces can change due to many reasons. The best case
