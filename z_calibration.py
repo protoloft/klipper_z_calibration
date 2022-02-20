@@ -134,14 +134,15 @@ class ZCalibrationHelper:
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzles offset"
                             " to the print surface")
     def cmd_CALIBRATE_Z(self, gcmd):
-        if self.state is not None:
-            raise self.printer.command_error("Already performing CALIBRATE_Z")
-            return
+        if self.z_homing is None:
+            raise gcmd.error("Must home axes first")
         self._log_config()
         state = CalibrationState(self, gcmd)
         state.calibrate_z()
     cmd_PROBE_Z_ACCURACY_help = "Probe Z-Endstop accuracy at Nozzle-Endstop position"
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
+        if self.z_homing is None:
+            raise gcmd.error("Must home axes first")
         speed = gcmd.get_float("PROBE_SPEED", self.second_speed, above=0.)
         lift_speed = gcmd.get_float("LIFT_SPEED", self.lift_speed, above=0.)
         sample_count = gcmd.get_int("SAMPLES", self.samples, minval=1)
