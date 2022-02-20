@@ -10,7 +10,11 @@ together do **not** affect the first layer at all.
 Here is a small video for a demonstration:
 [https://streamable.com/wclrmc](https://streamable.com/wclrmc)
 
-### Many thanks for all your feedback to make this happen
+### If you are looking for a RRF version of this automatic Z offset calibration
+
+Then, you can find it [here](https://github.com/pRINTERnOODLE/Auto-Z-calibration-for-RRF-3.3-or-later-and-Klicky-Probe) from pRINTERnOODLE - really fantastic to see this :tada:
+
+## Many thanks for all your feedback to make this happen
 
 And, if you like my work and would like to support me, please feel free to donate here:
 
@@ -82,10 +86,12 @@ independent of any offset calibrations - forever. This is so amazing! :tada:
 ## Requirements
 
 - A Z endstop where the tip of the nozzle drives on a switch (like the standard
-  Voron V1/V2 enstop). It will not work with the virtual pin of the probe as endstop!
+  Voron V1/V2 enstop). **It will not work with the virtual pin of the probe as endstop!**
+  It does not require a
 - A magnetic switch based probe at the print head - instead of the stock inductive probe
   (e.g. [this ones from Annex](https://github.com/Annex-Engineering/Quickdraw_Probe),
-  or the popular drop in replacement [KlickyProbe](https://github.com/jlas1/Klicky-Probe))
+  or the popular drop in replacement [KlickyProbe](https://github.com/jlas1/Klicky-Probe)
+  with many mounting options)
 - Both, the Z endstop and mag-probe are configured properly and homing and QGL are working.
 - The "z_calibration.py" file needs to be copied to the `klipper/klippy/extras` folder.
   Klipper will then load this file if it finds the "[z_calibration]" configuration section.
@@ -155,6 +161,13 @@ The endstop value is the homed Z position which is always zero or the configure
 "stepper_z:position_endstop" setting - and in this case, it's even the same as the
 probed nozzle hight.
 
+### For the thermal frame expansion
+
+There is a further Klipper plugin for adapting the Z height continuously to the thermal
+expansion of the printer frame after starting a print. It is from alchemyEngine and
+can be found
+[here](https://github.com/alchemyEngine/klipper_frame_expansion_comp).
+
 ## How To Install It
 
 To install this plugin, you need to copy the `z_calibration.py` file into the `extras`
@@ -168,10 +181,15 @@ this in the [Moonraker Updater](#moonraker-updater) section).
 
 ### Preconditions
 
-As a precondition, the probe needs to be configured properly. It is good to use more than
-one sample and use "median" as "probe:samples_result". And it is **important** to configure
-an appropriate probe offset in X, Y and **Z**. The Z offset does not need to be an exact
-value, since we do not use it as an offset, but it needs to be roughly a real value!
+As a precondition, the probe needs to be configured properly. **Please have a look at the
+[KlickyProbe](https://github.com/jlas1/Klicky-Probe) and how to configure it with all the
+macros it comes with.** If the probe does what it should reliably, Then this auto Z offset
+calibration is basically configured by adding the `z_calibration` section.
+
+It is good practice to use more than one sample and use "median" as "probe:samples_result".
+And it is **important** to configure an appropriate probe offset in X, Y and **Z**. The
+Z offset does not need to be an exact value, since we do not use it as an offset, but it
+needs to be roughly a real value!
 
 It even doesn't matter what "stepper_z:position_endstop" value is configured in Klipper.
 All positions are relative to this point - only the absolute values are different. But,
@@ -183,7 +201,7 @@ move the nozzle beyond this offset.
 
 The following configuration is needed to activate the plugin and to set some needed values:
 
->:bulb: **NEW:** If the nozzle cannot be probed with the mag-probe attached (Voron V1), then
+>:bulb: **NEW:** If the nozzle cannot be probed with the mag-probe attached (e.g.: Voron V1), then
 > it's now possible to detach (start_gcode), attach before probing the switch (before_switch_gcode)
 > and even detaching it at the end (end_gcode).
 
