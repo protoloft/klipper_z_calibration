@@ -1,7 +1,7 @@
 # This is a Klipper plugin for a self calibrating Z offset
 
-This is a Klipper plugin to self calibrate the nozzle offset to the print surface on a
-Voron V1/V2. There is no need for a manual Z offset or first layer calibration any more.
+This is a plugin to self calibrate the nozzle offset to the print surface on a 3D printer
+using Klipper. There is no need for a manual Z offset or first layer calibration any more.
 It is possible to change any variable in the printer from the temperature, the nozzle,
 the flex plate, any modding on the print head or bed or even changing the Z endstop
 position value in the klipper configuration. Any of these changes or even all of them
