@@ -160,7 +160,7 @@ nozzle is probed again and can vary a little to the first homing position.
 The output of the calibration with all determined positions looks like this
 (the offset is the one which is applied as GCode offset):
 
-```
+```text
 Z-CALIBRATION: ENDSTOP=-0.300 NOZZLE=-0.300 SWITCH=6.208 PROBE=7.013 --> OFFSET=-0.170
 ```
 
@@ -179,28 +179,59 @@ can be found
 
 To install this plugin, you need to copy the `z_calibration.py` file into the `extras`
 folder of klipper. Like:
-> klipper/klippy/extras/z_calibration.py
 
-An alternative would be to clone this repo and run the `install.sh` script (more on
-this in the [Moonraker Updater](#moonraker-updater) section).
+```bash
+/home/pi/klipper/klippy/extras/z_calibration.py
+```
+
+An alternative would be to clone this repo and run the `install.sh` script. Like:
+
+```bash
+cd /home/pi
+git clone https://github.com/protoloft/klipper_z_calibration.git
+./klipper_z_calibration/install.sh
+```
+
+More on this in the [Moonraker Updater](#moonraker-updater) section.
 
 ## How To Configure It
 
 ### Preconditions
 
-As a precondition, the probe needs to be configured properly. **Please have a look at the
-[KlickyProbe](https://github.com/jlas1/Klicky-Probe) and how to configure it with all the
-macros it comes with.** If the probe does what it should reliably, Then this auto Z offset
-calibration is basically configured by adding the `z_calibration` section.
+As a precondition, the probe needs to be configured properly. It must work flawlessly!
+If you don't know how, **please have a look at the
+[KlickyProbe](https://github.com/jlas1/Klicky-Probe) and how to configure it!**
+There is also a very good but complexe example configuration from
+[zellneralex](https://github.com/zellneralex/klipper_config/tree/master).
+
+Now, if the probe works reliably, Then this auto Z offset calibration is basically configured
+by adding the `z_calibration` section. All possible properties and it's defalt values
+are documented here under [configurations](#configurations).
+
+A minimal start configuration could look like this:
+
+```text
+[z_calibration]
+probe_nozzle_x:       <X position for clicking the nozzle on the Z endstop>
+probe_nozzle_y:       <Y position for clicking the nozzle on the Z endstop>
+probe_switch_x:       <X position for clicking the probe's switch body on the Z endstop>
+probe_switch_y:       <Y position for clicking the probe's swtich body on the Z endstop>
+probe_bed_x:          <X position for probing the bed, for instance the center point>
+probe_bed_y:          <Y position for probing the bed, for instance the center point>
+switch_offset:        <offset of the switch trigger (read the Switch Offset section!)>
+start_gcode:          <macro name for attaching the probe>
+#before_switch_gcode: <macro name for attaching the probe AFTER probing the nozzle>
+end_gcode:            <macro name for docking the probe>
+```
 
 It is good practice to use more than one sample and use "median" as "probe:samples_result".
-And it is **important** to configure an appropriate probe offset in X, Y and **Z**. The
+And it's **important** to configure an appropriate probe offset in X, Y and **Z**. The
 Z offset does not need to be an exact value, since we do not use it as an offset, but it
 needs to be roughly a real value!
 
 It even doesn't matter what "stepper_z:position_endstop" value is configured in Klipper.
 All positions are relative to this point - only the absolute values are different. But,
-it is advisable to configure a safe value here to not crash the nozzle into the build
+it's advisable to configure a safe value here to not crash the nozzle into the build
 plate by accident. The plugin only changes the GCode offset and it's still possible to
 move the nozzle beyond this offset.
 
@@ -212,7 +243,7 @@ The following configuration is needed to activate the plugin and to set some nee
 > it's now possible to detach (start_gcode), attach before probing the switch (before_switch_gcode)
 > and even detaching it at the end (end_gcode).
 
-```
+```text
 [z_calibration]
 probe_nozzle_x:
 probe_nozzle_y:
@@ -318,7 +349,7 @@ For example, the datasheet of the D2F-5:
 
 And the calculation of the offset base:
 
-```
+```text
 offset base = OP (Operation Position) - switch body height
      0.5 mm = 5.5 mm - 5 mm
 ```
@@ -352,7 +383,7 @@ So, there is no reason to not touch the body directly in a safe and robust way :
 Now, a update with the Moonraker update manager is possible by adding this configuration
 block to the "moonraker.conf":
 
-```
+```text
 [update_manager client z_calibration]
 type: git_repo
 path: /home/pi/klipper_z_calibration
@@ -362,7 +393,7 @@ install_script: install.sh
 
 For this, you need to clone this repository in your home directory (/home/pi):
 
-```
+```bash
 git clone https://github.com/protoloft/klipper_z_calibration.git
 ```
 
@@ -379,7 +410,7 @@ Do not bother too much about absolute values of the calculated offsets. These ca
 Only the real position from the nozzle to the bed counts. To test this, the result of the
 calibration can be queried by `GET_POSITION` first:
 
-```
+```text
 > CALIBRATE_Z
 > Z-CALIBRATION: ENDSTOP=-0.300 NOZZLE=-0.267 SWITCH=2.370 PROBE=3.093 --> OFFSET=-0.010000
 > GET_POSITION
@@ -398,7 +429,7 @@ Then, the offset can be tested by moving the nozzle slowly down to zero by movin
 multiple steps. It's good to do this by using GCodes, since the offset is applied as
 GCode-Offset. For example like this:
 
-```
+```gcode
 > G90
 > G0 Z5
 > G0 Z3
@@ -418,6 +449,9 @@ for fine tuning the "z_calibration:switch_offset" by actually printing first lay
 
 ## How To Use It
 
+>:pencil2: **NOTE:** If you calibrate Z within a `SAVE_GCODE_STATE` and `RESTORE_GCODE_STATE`,
+> the calibrated offset will be lost after calling `RESTORE_GCODE_STATE`!
+
 ### Command CALIBRATE_Z
 
 The calibration is started by using the `CALIBRATE_Z` command. There are no more parameters.
@@ -425,7 +459,7 @@ If the probe is not attached to the print head, it will abort the calibration pr
 (if configured normaly closed). So, macros can help here to attach and detach the probe like
 this:
 
-```
+```gcode
 [gcode_macro CALIBRATE_Z]
 rename_existing: BASE_CALIBRATE_Z
 gcode:
@@ -459,9 +493,9 @@ The print start sequence could look like this:
 I don't get any reasons, but if you still need to adjust the offset from your Slicers
 start GCode, then add this to your `PRINT_START` macro **after** the Z calibration:
 
-```
-    # Adjust the G-Code Z offset if needed
-    SET_GCODE_OFFSET Z_ADJUST={params.Z_ADJUST|default(0.0)|float} MOVE=1
+```text
+# Adjust the G-Code Z offset if needed
+SET_GCODE_OFFSET Z_ADJUST={params.Z_ADJUST|default(0.0)|float} MOVE=1
 ```
 
 Then, you can use `Z_ADJUST=0.0` in your Slicer. This does **not** reset to a fixed
@@ -477,7 +511,7 @@ project. It's just perfect :smiley:
 
 There is also a PROBE_Z_ACCURACY command to test the accuracy of the Z endstop:
 
-```
+```text
 PROBE_Z_ACCURACY [PROBE_SPEED=<mm/s>] [LIFT_SPEED=<mm/s>] [SAMPLES=<count>] [SAMPLE_RETRACT_DIST=<mm>]
 ```
 
