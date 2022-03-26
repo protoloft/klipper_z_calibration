@@ -212,12 +212,9 @@ A minimal start configuration could look like this:
 
 ```text
 [z_calibration]
-probe_nozzle_x:       <X position for clicking the nozzle on the Z endstop>
-probe_nozzle_y:       <Y position for clicking the nozzle on the Z endstop>
-probe_switch_x:       <X position for clicking the probe's switch body on the Z endstop>
-probe_switch_y:       <Y position for clicking the probe's swtich body on the Z endstop>
-probe_bed_x:          <X position for probing the bed, for instance the center point>
-probe_bed_y:          <Y position for probing the bed, for instance the center point>
+nozzle_xy_position:   <X,Y position for clicking the nozzle on the Z endstop>
+switch_xy_position:   <X,Y position for clicking the probe's switch body on the Z endstop>
+bed_xy_position:      <X,Y position for probing the bed, for instance the center point>
 switch_offset:        <offset of the switch trigger (read the Switch Offset section!)>
 start_gcode:          <macro name for attaching the probe>
 #before_switch_gcode: <macro name for attaching the probe AFTER probing the nozzle>
@@ -245,18 +242,14 @@ The following configuration is needed to activate the plugin and to set some nee
 
 ```text
 [z_calibration]
-probe_nozzle_x:
-probe_nozzle_y:
-#   The X and Y coordinates (in mm) for clicking the nozzle on the
-#   Z endstop.
-probe_switch_x:
-probe_switch_y:
-#   The X and Y coordinates (in mm) for clicking the probe's switch
-#   on the Z endstop.
-probe_bed_x: default from relative_reference_index of bed_mesh
-probe_bed_y: default from relative_reference_index of bed_mesh
-#   The X and Y coordinates (in mm) for probing on the print surface
-#   (e.g. the center point) These coordinates will be adapted by the
+nozzle_xy_position:
+#   A X, Y coordinate (e.g. 100,100) of the nozzle, clicking on the Z endstop.
+switch_xy_position:
+#   A X, Y coordinate (e.g. 100,100) of the probe's switchbody, clicking on
+#   the Z endstop.
+bed_xy_position: default from relative_reference_index of bed_mesh
+#   a X, Y coordinate (e.g. 100,100) where the print surface (e.g. the center
+#   point) is probed. These coordinates will be adapted by the
 #   probe's X and Y offsets. The default is the relative_reference_index
 #   of the configured bed_mesh. It will raise an error if there is no
 #   probe_bed site and no bed_mesh with a relative_reference_index
