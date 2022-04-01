@@ -56,25 +56,31 @@ And, if you like my work and would like to support me, please feel free to donat
 >:pray: **Please:** read this document carefully! Any details from feedbacks and trouble
 >shootings are documented here!
 
-- [Why This](#why-this)
-- [Requirements](#requirements)
-- [What It Does](#what-it-does)
-  - [Drawback](#drawback)
-  - [Interference](#interference)
-  - [Example](#example)
-  - [Thermal Frame Expansion](#thermal-frame-expansion)
-- [How To Install It](#how-to-install-it)
-- [How To Configure It](#how-to-configure-it)
-  - [Preconditions](#preconditions)
-  - [Configurations](#configurations)
-  - [Bed Mesh](#bed-mesh)
-  - [Switch Offset](#switch-offset)
-  - [Moonraker Updater](#moonraker-updater)
-- [How To Test It](#how-to-test-it)
-- [How To Use It](#how-to-use-it)
-  - [Command CALIBRATE_Z](#command-calibrate_z)
-  - [Command PROBE_Z_ACCURACY](#command-probe_z_accuracy)
-- [Disclaimer](#disclaimer)
+- [This is a Klipper plugin for a self calibrating Z offset](#this-is-a-klipper-plugin-for-a-self-calibrating-z-offset)
+    - [If you are looking for a RRF version of this automatic Z offset calibration](#if-you-are-looking-for-a-rrf-version-of-this-automatic-z-offset-calibration)
+    - [Many thanks for all your feedback to make this happen](#many-thanks-for-all-your-feedback-to-make-this-happen)
+- [News](#news)
+- [Table of Content](#table-of-content)
+  - [Why This](#why-this)
+  - [Requirements](#requirements)
+  - [What It Does](#what-it-does)
+    - [Drawback](#drawback)
+    - [Interference](#interference)
+    - [Example](#example)
+    - [Thermal Frame Expansion](#thermal-frame-expansion)
+  - [How To Install It](#how-to-install-it)
+  - [How To Configure It](#how-to-configure-it)
+    - [Preconditions](#preconditions)
+    - [Configurations](#configurations)
+    - [Bed Mesh](#bed-mesh)
+    - [Switch Offset](#switch-offset)
+      - [How About A Negative Switch Offset?](#how-about-a-negative-switch-offset)
+    - [Moonraker Updater](#moonraker-updater)
+  - [How To Test It](#how-to-test-it)
+  - [How To Use It](#how-to-use-it)
+    - [Command CALIBRATE_Z](#command-calibrate_z)
+    - [Command PROBE_Z_ACCURACY](#command-probe_z_accuracy)
+  - [Disclaimer](#disclaimer)
 
 ## Why This
 
@@ -256,6 +262,7 @@ bed_xy_position: default from relative_reference_index of bed_mesh
 #   configured.
 switch_offset:
 #   The trigger point offset of the used mag-probe switch.
+#   Larger values position nozzle closer to the bed.
 #   This needs to be fined out manually. More on this later
 #   in this section..
 max_deviation: 1.0
