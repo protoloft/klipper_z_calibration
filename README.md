@@ -460,8 +460,9 @@ gcode:
     M117 Z-Calibration..
     _SET_LOWER_STEPPER_CURRENT  # I lower the stepper current for homing and probing 
     ATTACH_PROBE                # a macro for fetching the probe first
+    SET_GCODE_OFFSET Z=0
     BASE_CALIBRATE_Z
-    DETACH_PROBE                # and parking it afterwards
+    DETACH_PROBE                # and parking it afterwards (or DOCK_PROBE in klicky macros)
     _RESET_STEPPER_CURRENT      # resetting the stepper current
     M117
 ```
