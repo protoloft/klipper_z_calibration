@@ -20,8 +20,15 @@ And, if you like my work and would like to support me, please feel free to donat
 
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=L3ZN4SAWW2NMC)
 
-# News
+# Changes
 
+- **v0.9.0**
+  - **CAUTION:** The X and Y position configurations are now merged to a combined X,Y parameter,
+    **Please update your Configuration!**
+  - The CALIBRATE_Z command has an optional parameter for the probing position on the bed
+  - The restriction for a relative reference index in the "bed_mesh" section is removed
+  - Some other small changes from the failed Klipper PR are merged back now
+  - Example configurations are removed because they were just examples and confused many people
 - **v0.8.1**
   - Now, the relative reference index (RRI) of the bed mesh is read every time the calibration
     starts. So, feel free to use any adaptive mesh macro :tada:
