@@ -255,6 +255,7 @@ bed_xy_position: default from relative_reference_index of bed_mesh
 #   index at runtime or use the GCode Parameter BED_POSITION for CALIBRATE_Z.
 switch_offset:
 #   The trigger point offset of the used mag-probe switch.
+#   Larger values will position the nozzle closer to the bed.
 #   This needs to be fined out manually. More on this later
 #   in this section..
 max_deviation: 1.0
