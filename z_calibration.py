@@ -1,3 +1,9 @@
+
+# Klipper plugin for a selfcalibrating Z offset.
+#
+# Copyright (C) 2021-2022  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 from mcu import MCU_endstop
 
@@ -29,9 +35,9 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
-        self.nozzle_site = self._parse_site("nozzle_xy_position", "probe_nozzle")
-        self.switch_site = self._parse_site("switch_xy_position", "probe_switch")
-        self.bed_site = self._parse_site("bed_xy_position", "probe_bed", True)
+        self.nozzle_site = self._get_site("nozzle_xy_position", "probe_nozzle")
+        self.switch_site = self._get_site("switch_xy_position", "probe_switch")
+        self.bed_site = self._get_site("bed_xy_position", "probe_bed", True)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.start_gcode = gcode_macro.load_template(config, 'start_gcode', '')
         self.switch_gcode = gcode_macro.load_template(config,
@@ -82,15 +88,6 @@ class ZCalibrationHelper:
             self.clearance = 20 # defaults to 20mm
         if self.samples_result is None:
             self.samples_result = probe.samples_result
-        if self.bed_site is None:
-            mesh = self.printer.lookup_object('bed_mesh', default=None)
-            if mesh is None or mesh.bmc.relative_reference_index is None:
-                raise self.printer.config_error("Either configure"
-                                                " bed_xy_position or configure"
-                                                " a mesh with a"
-                                                " relative_reference_index"
-                                                " for %s"
-                                                % (self.config.get_name()))
     def handle_home_rails_end(self, homing_state, rails):
         # get z homing position
         for rail in rails:
@@ -112,9 +109,16 @@ class ZCalibrationHelper:
     def cmd_CALIBRATE_Z(self, gcmd):
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
-        # get the mesh's relative reference point
-        # a round mesh/bed would not work here so far...
-        if self._parse_site("bed_xy_position", "probe_bed", True) is None:
+        site_attr = gcmd.get("BED_POSITION", None)
+        if site_attr is not None:
+            # set bed site from BED_POSITION parameter
+            self.bed_site = self._parse_site("BED_POSITION", site_attr)
+        elif self._get_site("bed_xy_position", "probe_bed", True) is not None:
+            # set bed site from configuration
+            self.bed_site = self._get_site("bed_xy_position", "probe_bed", False)
+        else:
+            # else get the mesh's relative reference index point
+            # a round mesh/bed would not work here so far...
             try:
                 mesh = self.printer.lookup_object('bed_mesh', default=None)
                 rri = mesh.bmc.relative_reference_index    
@@ -122,17 +126,15 @@ class ZCalibrationHelper:
                 logging.debug("Z-CALIBRATION probe bed_x=%.3f bed_y=%.3f"
                               % (self.bed_site[0], self.bed_site[1]))
             except:
-                raise self.printer.config_error("Either configure"
-                                                " bed_xy_position or configure"
-                                                " a mesh with a"
-                                                " relative_reference_index"
-                                                " for %s"
-                                                % (self.config.get_name()))
+                raise gcmd.error("Either use the BED_POSITION parameter,"
+                                 " configure a bed_xy_position or define"
+                                 " a mesh with a relative_reference_index"
+                                 " for %s" % (self.config.get_name()))
         self._log_config()
         state = CalibrationState(self, gcmd)
         state.calibrate_z()
     cmd_PROBE_Z_ACCURACY_help = ("Probe Z-Endstop accuracy at"
-                                " Nozzle-Endstop position")
+                                 " Nozzle-Endstop position")
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
@@ -180,21 +182,20 @@ class ZCalibrationHelper:
             "probe accuracy results: maximum %.6f, minimum %.6f, range %.6f,"
             " average %.6f, median %.6f, standard deviation %.6f" % (
             max_value, min_value, range_value, avg_value, median, sigma))        
-    def _parse_site(self, name, legacy_prefix, optional=False):
+    def _get_site(self, name, legacy_prefix, optional=False):
+        legacy_x = self.config.getfloat("%s_x" % (legacy_prefix), -1.0)
+        legacy_y = self.config.getfloat("%s_y" % (legacy_prefix), -1.0)
+        if (optional and self.config.get(name, None) is None
+            and (legacy_x < 0 or legacy_y < 0)):
+            return None
+        if legacy_x >= 0 and legacy_y >= 0:
+            return [legacy_x, legacy_y, None]
+        else:
+            return self._parse_site(name, self.config.get(name))
+    def _parse_site(self, name, site):
         try:
-            legacy_x = "%s_x" % (legacy_prefix)
-            legacy_y = "%s_y" % (legacy_prefix)
-            if (optional and self.config.get(name, None) is None
-                and (self.config.get(legacy_x, None) is None
-                or self.config.get(legacy_y, None) is None)):
-                return None
-            if self.config.get(name, None) is not None:
-                x_pos, y_pos = self.config.get(name).split(',')
-                return [float(x_pos), float(y_pos), None]
-            else:
-                x_pos = self.config.getfloat(legacy_x)
-                y_pos = self.config.getfloat(legacy_y)
-                return [x_pos, y_pos, None]
+            x_pos, y_pos = site.split(',')
+            return [float(x_pos), float(y_pos), None]
         except:
             raise self.config.error("Unable to parse %s in %s"
                                     % (name, self.config.get_name()))
