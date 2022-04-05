@@ -256,7 +256,7 @@ bed_xy_position: default from relative_reference_index of bed_mesh
 switch_offset:
 #   The trigger point offset of the used mag-probe switch.
 #   Larger values will position the nozzle closer to the bed.
-#   This needs to be fined out manually. More on this later
+#   This needs to be find out manually. More on this later
 #   in this section..
 max_deviation: 1.0
 #   The maximum allowed deviation of the calculated offset.
@@ -474,7 +474,7 @@ gcode:
     {% else %}
       BASE_CALIBRATE_Z
     {% endif %}
-    DETACH_PROBE                # and parking it afterwards
+    DETACH_PROBE                # and parking it afterwards (or DOCK_PROBE in klicky macros)
     M117
 ```
 
