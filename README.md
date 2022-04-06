@@ -24,11 +24,11 @@ And, if you love my work and would like to support me, please feel free to do th
 
 - **v0.9.1** (2022-04-06)
   - The dummy system service for Moonraker's update manager is removed :tada:
-    **:exclamation:Please update this plugin and Moonraker, adapt your moonraker.conf and execute
-    the install.sh script again:exclamation:**
+  - **:exclamation:Please update this plugin and Moonraker, adapt your moonraker.conf and execute
+    the install.sh script again!**
 - **v0.9.0** (2022-04-05)
   - **CAUTION:** The X and Y position configurations are now merged to a combined X,Y parameter,
-    **:exclamation:Please update your Configuration:exclamation:**
+  - **:exclamation:Please update your Configuration!**
   - The CALIBRATE_Z command has an optional parameter for the probing position on the bed
   - The restriction for a relative reference index in the "bed_mesh" section is removed
   - Some other small changes from the failed Klipper PR are merged back now
