@@ -1,4 +1,4 @@
-# This is a Klipper plugin for a self calibrating Z offset
+# Klipper plugin for a self calibrating Z offset
 
 This is a plugin to self calibrate the nozzle offset to the print surface on a 3D printer
 using Klipper. There is no need for a manual Z offset or first layer calibration any more.
@@ -16,45 +16,49 @@ Then, you can find it [here](https://github.com/pRINTERnOODLE/Auto-Z-calibration
 
 ### Many thanks for all your feedback to make this happen
 
-And, if you like my work and would like to support me, please feel free to donate here:
+And, if you love my work and would like to support me, please feel free to do this here:
 
-[![](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate?hosted_button_id=L3ZN4SAWW2NMC)
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/X8X1C0DTD)
 
 # Changes
 
-- **v0.9.0**
+- **v0.9.1** (2022-04-06)
+  - The dummy system service for Moonraker's update manager is removed :tada:
+    **:exclamation:Please update this plugin and Moonraker, adapt your moonraker.conf and execute
+    the install.sh script again:exclamation:**
+- **v0.9.0** (2022-04-05)
   - **CAUTION:** The X and Y position configurations are now merged to a combined X,Y parameter,
-    **Please update your Configuration!**
+    **:exclamation:Please update your Configuration:exclamation:**
   - The CALIBRATE_Z command has an optional parameter for the probing position on the bed
   - The restriction for a relative reference index in the "bed_mesh" section is removed
   - Some other small changes from the failed Klipper PR are merged back now
   - Example configurations are removed because they were just examples and confused many people
-- **v0.8.1**
+- **v0.8.1** (2022-02-21)
   - Now, the relative reference index (RRI) of the bed mesh is read every time the calibration
     starts. So, feel free to use any adaptive mesh macro :tada:
   - Checks for homed axes and attached probe just before using it
   - A new Z-Tilt macro in the examples
   - Improvements of the documentation for installation, configuration and switch_offset
-- **v0.8.0**
+- **v0.8.0** (2021-08-09)
   - New configurations for executing G-Code commands (useful for V1 users)
   - Bugfix for configuring the z_calibration too early (many thanks to Frix-x),
   - New example configurations
-  - **Action needed** for the Moonraker update, see: [Moonraker Updater](#moonraker-updater)
-- **v0.7.0**
+  - **Action needed** for the Moonraker update, see: [Moonraker Update Manager](#moonraker-update-manager)
+- **v0.7.0** (2021-06-23)
   - New "PROBE_Z_ACCURACY" command
   - Renaming of the dummy service (**CAUTION**: the configuration needs to be adapted for this!)
   - Fix in "_SET_ACC" Macro
-- **v0.6.2**
+- **v0.6.2** (2021-06-01)
   - As desired, added Moonraker Update possibility.
-- **v0.5**
+- **v0.5** (2021-05-30)
   - Added compatibility for newer Klipper versions.
-- **v0.4**
+- **v0.4** (2021-05-17)
   - The "calibrate_z:probe_bed_x|y" settings can be omitted in the configuration and the
   "mesh:relative_reference_index" of the bed mesh is taken as default instead.
-- **v0.3**
+- **v0.3** (2021-05-13)
   - A new option to first probe down fast before recording the probing samples is added.
   - And all indirect properties from other sections can be customized now.
-- **v0.2**
+- **v0.2** (2021-05-12)
   - The probing repeatability is now increased dramatically by using the probing
     procedure instead of the homing procedure!
 
@@ -71,12 +75,12 @@ And, if you like my work and would like to support me, please feel free to donat
   - [Example](#example)
   - [Thermal Frame Expansion](#thermal-frame-expansion)
 - [How To Install It](#how-to-install-it)
+  - [Moonraker Update Manager](#moonraker-update-manager)
 - [How To Configure It](#how-to-configure-it)
   - [Preconditions](#preconditions)
   - [Configurations](#configurations)
   - [Bed Mesh](#bed-mesh)
   - [Switch Offset](#switch-offset)
-  - [Moonraker Updater](#moonraker-updater)
 - [How To Test It](#how-to-test-it)
 - [How To Use It](#how-to-use-it)
   - [Command CALIBRATE_Z](#command-calibrate_z)
@@ -85,8 +89,8 @@ And, if you like my work and would like to support me, please feel free to donat
 
 ## Why This
 
-- With the Voron V1/V2 Z endstop (the one where the tip of the nozzle clicks on a switch),
-  you can exchange nozzles without adapting the offset:
+- With a Z endstop where the tip of nozzle drives on the endstop switch (like the one in
+  the Voron V1 or V2), you can exchange nozzles without adapting the offset:
   ![endstop offset](pictures/endstop-offset.png)
 - Or, by using a mag-probe (or SuperPinda, but this is not probing the surface directly
   and thus needs an other offset which is not as constant as the one of a switch)
@@ -94,8 +98,8 @@ And, if you like my work and would like to support me, please feel free to donat
   ![probe offset](pictures/probe-offset.png)
 - But, why can't you get both of it? Or even more.. ?
 
-And this is what I did. I just combined these two probing methods to be completely
-independent of any offset calibrations - forever. This is so amazing! :tada:
+And this is what I did with this plugin. I just combined these two probing methods to be
+completely independent of any offset calibrations - forever. This is so amazing! :tada:
 
 ## Requirements
 
@@ -117,8 +121,8 @@ independent of any offset calibrations - forever. This is so amazing! :tada:
 - (My previous Klipper macro for compensating the temperature based expansion of the
   Z endstop rod is **not** needed anymore.)
 
->:point_up: **Note:** After copying the pyhton script, a full Klipper service restart is needed to
-> load it!
+>:point_up: **Note:** After copying the pyhton script, a full Klipper service restart is
+> needed to load it!
 
 ## What It Does
 
@@ -199,7 +203,35 @@ git clone https://github.com/protoloft/klipper_z_calibration.git
 ./klipper_z_calibration/install.sh
 ```
 
-More on this in the [Moonraker Updater](#moonraker-updater) section.
+More on this in the [Moonraker Update Manager](#moonraker-update-manager) section.
+
+### Moonraker Update Manager
+
+>:point_up: **Attention:** With a current Moonraker version, the dummy service is not
+> necessary anymore. But, you need to adapt the following configuration block in your
+> "moonraker.conf" file. The old dummy service can be removed by executing the install
+> script again. Like: `/home/pi/klipper_z_calibration/install.sh`
+
+It's possible to update this extension with the Moonraker's update manager by adding this
+configuration block to the "moonraker.conf" of your printer:
+
+```text
+[update_manager client z_calibration]
+type: git_repo
+path: ~/klipper_z_calibration
+origin: https://github.com/protoloft/klipper_z_calibration.git
+install_script: install.sh
+managed_services: klipper
+```
+
+This requires this repository to be cloned into your home directory (e.g. /home/pi):
+
+```bash
+git clone https://github.com/protoloft/klipper_z_calibration.git
+```
+
+The install script assumes that Klipper is also installed in your home directory under
+"klipper": `${HOME}/klipper`.
 
 ## How To Configure It
 
@@ -373,36 +405,6 @@ different forces in this system. But forces can change due to many reasons. The 
 would be that the actuator is pushed all the way in until the pin touches the body of the
 switch - before the endstop is triggered! But it can also be anything in between...
 So, there is no reason to not touch the body directly in a safe and robust way :thumbsup:
-
-### Moonraker Updater
-
->:point_up: **Attention:** If this was already configure prior to version 0.8,
-> a manual execution of the "install.sh" script is needed to update the soft link and
-> the dummy service definition like: `/home/pi/klipper_z_calibration/install.sh`!
-
-Now, a update with the Moonraker update manager is possible by adding this configuration
-block to the "moonraker.conf":
-
-```text
-[update_manager client z_calibration]
-type: git_repo
-path: /home/pi/klipper_z_calibration
-origin: https://github.com/protoloft/klipper_z_calibration.git
-install_script: install.sh
-```
-
-For this, you need to clone this repository in your home directory (/home/pi):
-
-```bash
-git clone https://github.com/protoloft/klipper_z_calibration.git
-```
-
-The script assumes that Klipper is also in your home directory under
-"klipper": `${HOME}/klipper`.
-
->:point_up: **NOTE:** Currently, there is a dummy systemd service installed
-> to satisfy moonraker's update manager which also restarts Klipper after an
-> update.
 
 ## How To Test It
 
