@@ -290,8 +290,8 @@ bed_xy_position: default from relative_reference_index of bed_mesh
 #   a X, Y coordinate (e.g. 100,100) where the print surface (e.g. the center
 #   point) is probed. These coordinates will be adapted by the
 #   probe's X and Y offsets. The default is the relative_reference_index
-#   of the configured bed_mesh. It's possible to change the relative reference
-#   index at runtime or use the GCode Parameter BED_POSITION for CALIBRATE_Z.
+#   of the configured bed_mesh, if configured. It's possible to change the relative
+#   reference index at runtime or use the GCode argument BED_POSITION of CALIBRATE_Z.
 switch_offset:
 #   The trigger point offset of the used mag-probe switch.
 #   Larger values will position the nozzle closer to the bed.
@@ -361,10 +361,18 @@ end_gcode:
 ### Bed Mesh
 
 If you use a bed mesh, it is advised to configure it with a relative reference index
-("bed_mesh:relative_reference_index" setting). But this is not enforced anymore. Then, the
-position at this index will become the Z=0 point of the mesh. If the configuration lacks a
-"bed_xy_position", then the relative reference index will be read every time the calibration
-is started. Thereby it's possible to change this index by macros at runtime.
+("bed_mesh:relative_reference_index" setting). But this is not enforced anymore. With a configured
+relative reference, the position at this index will become the Z=0 point of the mesh. So, it's
+good to calibrate Z at this point. If the configuration lacks a "bed_xy_position", then the
+relative reference index will be read every time the calibration is started. Thereby it's
+possible to change this index by a macro at runtime.
+
+This is used by adaptive mesh macros. They create a smaller mesh which is only on the area used
+by the starting print. One example would be the macros from Frix-x which can be found
+[here](https://github.com/Frix-x/klipper-voron-V2).
+
+>:point_up: **NOTE:** Be careful with adaptive mesh macros because they use Klipper's mesh function
+>in an unsupported way! It's important to calibrate Z correctly for the created mesh!
 
 ### Switch Offset
 
@@ -466,6 +474,8 @@ The optional "BED_POSITION" parameter can be used to define a different position
 probed on the bed. But, if the "bed_xy_position" is not configured and there is no bed mesh
 or relative reference index, this parameter becomes mandatory.
 
+The "BED_POSITION" argument overrules any configured bed position.
+
 If the probe is not attached to the print head, it will abort the calibration process
 (if configured normally closed). So, macros can help here to attach and detach the probe like
 this:
@@ -522,6 +532,14 @@ offset set by the calibration but adjusts it by the given value!
 Now, I wish you happy printing with an always perfect first layer - doesn't matter what you just
 modded on your printer's head or bed or what nozzle and flex plate you like to use for your next
 project. It's just perfect :smiley:
+
+#### Resetting the Calibration
+
+The calibration can be resetted by executing this GCode command:
+
+```text
+SET_GCODE_OFFSET Z=0.0
+```
 
 ### Command PROBE_Z_ACCURACY
 
