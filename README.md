@@ -7,8 +7,11 @@ the flex plate, any modding on the print head or bed or even changing the Z ends
 position value in the Klipper configuration. Any of these changes or even all of them
 together do **not** affect the first layer at all.
 
-Here is a small video for a demonstration:
+Here is a small video for a short demonstration:
 [https://streamable.com/wclrmc](https://streamable.com/wclrmc)
+
+And now, we have a nice how-to from Kapman:
+[https://youtu.be/oQYHFecsTto](https://youtu.be/oQYHFecsTto)
 
 ### If you are looking for a RRF version of this automatic Z offset calibration
 
@@ -203,17 +206,20 @@ git clone https://github.com/protoloft/klipper_z_calibration.git
 ./klipper_z_calibration/install.sh
 ```
 
+It's safe to execute the install script multiple times.
+
 More on this in the [Moonraker Update Manager](#moonraker-update-manager) section.
 
 ### Moonraker Update Manager
 
->:point_up: **Attention:** With a current Moonraker version, the dummy service is not
-> necessary anymore. But, you need to adapt the following configuration block in your
-> "moonraker.conf" file. The old dummy service can be removed by executing the install
-> script again. Like: `/home/pi/klipper_z_calibration/install.sh`
+>:bulb: **NEW:** With a current Moonraker version, the dummy service is not
+> necessary anymore. If you have updated to the 0.9.1 version, you need to adapt the
+> following configuration block in your "moonraker.conf" file. The old dummy service
+> can be removed by executing the install script again. Like:
+> `/home/pi/klipper_z_calibration/install.sh`
 
-It's possible to update this extension with the Moonraker's update manager by adding this
-configuration block to the "moonraker.conf" of your printer:
+It's possible to keep this extension up to date with the Moonraker's update manager by
+adding this configuration block to the "moonraker.conf" of your printer:
 
 ```text
 [update_manager client z_calibration]
@@ -232,6 +238,9 @@ git clone https://github.com/protoloft/klipper_z_calibration.git
 
 The install script assumes that Klipper is also installed in your home directory under
 "klipper": `${HOME}/klipper`.
+
+>:point_up: **NOTE:** If your Moonraker is not on a recent version, you may get an error
+> with the "managed_services" line!
 
 ## How To Configure It
 
@@ -273,11 +282,9 @@ move the nozzle beyond this offset.
 
 ### Configurations
 
-The following configuration is needed to activate the plugin and to set some needed values:
+>:bulb: **NEW:** The X and Y coordinates are now combined into one option with a "X,Y" value.
 
->:bulb: **NEW:** If the nozzle cannot be probed with the mag-probe attached (e.g.: Voron V1), then
-> it's now possible to detach (start_gcode), attach before probing the switch (before_switch_gcode)
-> and even detaching it at the end (end_gcode).
+The following configuration is needed to activate the plugin and to set some needed values:
 
 ```text
 [z_calibration]
@@ -359,6 +366,9 @@ end_gcode:
 >probing is covered by this script directly.
 
 ### Bed Mesh
+
+>:bulb: **NEW:** Adaptive mesh macros can be used now by redefining the RRI of the mesh and/or by
+> using the new "BED_POSITION" parameter of the "CALIBRATE_Z" command.
 
 If you use a bed mesh, it is advised to configure it with a relative reference index
 ("bed_mesh:relative_reference_index" setting). But this is not enforced anymore. With a configured
@@ -464,7 +474,10 @@ for fine tuning the "z_calibration:switch_offset" by actually printing first lay
 
 ### Command CALIBRATE_Z
 
-The calibration is started by:
+>:bulb: **NEW:** The configured position for probing on the bed can now be overwritten by
+> using the new "BED_POSITION" parameter.
+
+The Z offset calibration is started by:
 
 ```text
 CALIBRATE_Z [BED_POSITION=<X mm, Y mm>]
