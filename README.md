@@ -359,6 +359,14 @@ end_gcode:
 #   A list of G-Code commands to execute after each calibration command.
 #   See docs/Command_Templates.md for G-Code format. This can be used to
 #   detach the probe afterwards.
+wiggle_x: 0.0
+#   After probing nozzle and retracting, move X some distance away and back.
+#   Useful to prevent Z endstop pin sticking to the nozzle and getting pulled
+#   out of the assembly. Can be negative. Setting to zero disables wiggling.
+#   Can be combined with wiggle_y to move diagonally. The default is 0 mm.
+wiggle_y: 0.0
+#   Same as wiggle_x but move Y instead. Can be combined with wiggle_x to move
+#   diagonally. The default is 0mm.
 ```
 
 >:bulb: **INFO:** The settings about probing from this section do not apply to the probing on the

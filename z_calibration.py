@@ -46,6 +46,8 @@ class ZCalibrationHelper:
         self.end_gcode = gcode_macro.load_template(config, 'end_gcode', '')
         self.query_endstops = self.printer.load_object(config,
                                                        'query_endstops')
+        self.wiggle_x = config.getfloat('wiggle_x', 0.0)
+        self.wiggle_y = config.getfloat('wiggle_y', 0.0)
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
         self.printer.register_event_handler("homing:home_rails_end",
@@ -199,7 +201,7 @@ class ZCalibrationHelper:
         except:
             raise self.config.error("Unable to parse %s in %s"
                                     % (name, self.config.get_name()))
-    def _probe(self, mcu_endstop, z_position, speed):
+    def _probe(self, mcu_endstop, z_position, speed, wiggle=False):
             toolhead = self.printer.lookup_object('toolhead')
             pos = toolhead.get_position()
             pos[2] = z_position
@@ -209,6 +211,12 @@ class ZCalibrationHelper:
             # retract
             self._move([None, None, curpos[2] + self.retract_dist],
                        self.lift_speed)
+            if wiggle:
+                self._move([curpos[0] + self.wiggle_x,
+                            curpos[1] + self.wiggle_y,
+                            None],
+                           self.speed)
+                self._move([curpos[0], curpos[1], None], self.speed)
             self.gcode.respond_info("probe at %.3f,%.3f is z=%.6f"
                 % (curpos[0], curpos[1], curpos[2]))
             return curpos
@@ -262,7 +270,7 @@ class CalibrationState:
         self.probe = helper.printer.lookup_object('probe')
         self.toolhead = helper.printer.lookup_object('toolhead')
         self.gcode_move = helper.printer.lookup_object('gcode_move')
-    def _probe_on_z_endstop(self, site):
+    def _probe_on_z_endstop(self, site, wiggle=False):
         pos = self.toolhead.get_position()
         if pos[2] < self.helper.clearance:
             # no clearance, better to move up
@@ -273,14 +281,15 @@ class CalibrationState:
         if self.helper.first_fast:
             # first probe just to get down faster
             self.helper._probe(self.z_endstop, self.helper.position_min,
-                               self.helper.probing_speed)
+                               self.helper.probing_speed, wiggle=wiggle)
         retries = 0
         positions = []
         while len(positions) < self.helper.samples:
             # probe with second probing speed
             curpos = self.helper._probe(self.z_endstop,
                                         self.helper.position_min,
-                                        self.helper.second_speed)
+                                        self.helper.second_speed,
+                                        wiggle=wiggle)
             positions.append(curpos[:3])
             # check tolerance
             z_positions = [p[2] for p in positions]
@@ -326,7 +335,8 @@ class CalibrationState:
     def calibrate_z(self):
         self.helper.start_gcode.run_gcode_from_command()
         # probe the nozzle
-        nozzle_zero = self._probe_on_z_endstop(self.helper.nozzle_site)
+        nozzle_zero = self._probe_on_z_endstop(self.helper.nozzle_site,
+                                               wiggle=True)
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
         # check if probe is attached and the switch is closing it
