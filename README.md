@@ -88,6 +88,7 @@ And, if you love my work and would like to support me, please feel free to do th
 - [How To Use It](#how-to-use-it)
   - [Command CALIBRATE_Z](#command-calibrate_z)
   - [Command PROBE_Z_ACCURACY](#command-probe_z_accuracy)
+- [Ooze Mitigation](#ooze-mitigation)
 - [Disclaimer](#disclaimer)
 
 ## Why This
@@ -565,6 +566,32 @@ PROBE_Z_ACCURACY [PROBE_SPEED=<mm/s>] [LIFT_SPEED=<mm/s>] [SAMPLES=<count>] [SAM
 It calculates the maximum, minimum, average, median and standard deviation of multiple probe samples on
 the endstop by taking the configured nozzle position on the endstop. The optional parameters default
 to their equivalent setting in the z_calibration config section.
+
+## Ooze Mitigation
+
+Ooze with any nozzle probe endstop can cause inaccuracies, as the filament will continue to leak or
+deform over the space of multiple probes. It is highly recommended to take some measures to prevent
+ooze buildup before the nozzle probe portion of this plugin.
+
+A slow long retraction, of as much as 15mm at print end, can reduce the potential for ooze. If you do
+this, consider adding a comparable extrude as the last command in your print start sequence to bring
+the plastic back to the tip. (Retracts longer than 5mm have been linked to clogs in many hotends,
+especially the Rapido. This may be best considered a last resort, depending on exact hardware and
+filament.)
+
+Heating the nozzle about a minute before scrubbing - using a purge bucket - will allow all the
+remaining plastic time to drain from the nozzle and be cleaned away by a simple wipe. If using a
+purge and scrubbing bucket, do not purge filament at this stage.
+
+An endstop switch that requires a stronger activation force, such as sexbolt with a spring, or
+unklicky z, can help squash any remaining ooze and improve consistency.
+
+Probing can be done with a hotend temperature below the full temperature for the print. If you print
+at 250, you can preheat the nozzle to 180, and run this script before finishing the heat up to full
+temperature. This may have varying effects depending on temperatures used.
+
+Also consider picking up your probe prior to your nozzle wipe, to allow this script to probe the
+nozzle immediately after cleaning it.
 
 ## Disclaimer
 
