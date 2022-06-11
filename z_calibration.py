@@ -352,6 +352,7 @@ class CalibrationState:
                                   switch_zero, probe_zero, offset))
         # check max deviation
         if abs(offset) > self.helper.max_deviation:
+            self.helper.end_gcode.run_gcode_from_command()
             raise self.helper.printer.command_error("Offset is larger as"
                                                     " allowed: OFFSET=%.3f"
                                                     " MAX_DEVIATION=%.3f"
