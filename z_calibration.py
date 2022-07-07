@@ -262,7 +262,7 @@ class CalibrationState:
         self.probe = helper.printer.lookup_object('probe')
         self.toolhead = helper.printer.lookup_object('toolhead')
         self.gcode_move = helper.printer.lookup_object('gcode_move')
-    def _probe_on_site(self, endstop, site):
+    def _probe_on_site(self, endstop, site, check_probe=False):
         pos = self.toolhead.get_position()
         if pos[2] < self.helper.clearance:
             # no clearance, better to move up
@@ -270,6 +270,13 @@ class CalibrationState:
                               self.helper.lift_speed)
         # move to position
         self.helper._move(list(site), self.helper.speed)
+        if check_probe:
+            # check if probe is attached and switch is closed
+            time = self.toolhead.get_last_move_time()
+            if self.probe.mcu_probe.query_endstop(time):
+                raise self.helper.printer.command_error("Probe switch not"
+                                                        " closed - Probe not"
+                                                        " attached?")
         if self.helper.first_fast:
             # first probe just to get down faster
             self.helper._probe(endstop, self.helper.position_min,
@@ -321,18 +328,15 @@ class CalibrationState:
                                           self.helper.nozzle_site)
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
-        # check if probe is attached and the switch is closing it
-        time = self.toolhead.get_last_move_time()
-        if self.probe.mcu_probe.query_endstop(time):
-            raise self.helper.printer.command_error("Probe switch not closed"
-                                                    " - Probe not attached?")
         # probe the body of the switch
         switch_zero = self._probe_on_site(self.z_endstop,
-                                          self.helper.switch_site)
+                                          self.helper.switch_site,
+                                          True)
         # probe position on bed
         probe_site = self._add_probe_offset(self.helper.bed_site)
-        probe_zero = self._probe_on_site(self.probe.mcu_probe, probe_site)
-
+        probe_zero = self._probe_on_site(self.probe.mcu_probe,
+                                         probe_site,
+                                         True)
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero
                                + self.helper.switch_offset)
