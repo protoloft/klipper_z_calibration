@@ -286,6 +286,7 @@ class CalibrationState:
             z_positions = [p[2] for p in positions]
             if max(z_positions) - min(z_positions) > self.helper.tolerance:
                 if retries >= self.helper.retries:
+                    self.helper.end_gcode.run_gcode_from_command()
                     raise self.gcmd.error("Probe samples exceed tolerance")
                 self.gcmd.respond_info("Probe samples exceed tolerance."
                                        " Retrying...")
@@ -352,6 +353,7 @@ class CalibrationState:
                                   switch_zero, probe_zero, offset))
         # check max deviation
         if abs(offset) > self.helper.max_deviation:
+            self.helper.end_gcode.run_gcode_from_command()
             raise self.helper.printer.command_error("Offset is larger as"
                                                     " allowed: OFFSET=%.3f"
                                                     " MAX_DEVIATION=%.3f"
