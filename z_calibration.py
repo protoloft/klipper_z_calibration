@@ -262,7 +262,7 @@ class CalibrationState:
         self.probe = helper.printer.lookup_object('probe')
         self.toolhead = helper.printer.lookup_object('toolhead')
         self.gcode_move = helper.printer.lookup_object('gcode_move')
-    def _probe_on_z_endstop(self, site):
+    def _probe_on_site(self, endstop, site):
         pos = self.toolhead.get_position()
         if pos[2] < self.helper.clearance:
             # no clearance, better to move up
@@ -272,13 +272,13 @@ class CalibrationState:
         self.helper._move(list(site), self.helper.speed)
         if self.helper.first_fast:
             # first probe just to get down faster
-            self.helper._probe(self.z_endstop, self.helper.position_min,
+            self.helper._probe(endstop, self.helper.position_min,
                                self.helper.probing_speed)
         retries = 0
         positions = []
         while len(positions) < self.helper.samples:
             # probe with second probing speed
-            curpos = self.helper._probe(self.z_endstop,
+            curpos = self.helper._probe(endstop,
                                         self.helper.position_min,
                                         self.helper.second_speed)
             positions.append(curpos[:3])
@@ -296,23 +296,13 @@ class CalibrationState:
         if self.helper.samples_result == 'median':
             return self.helper._calc_median(positions)[2]
         return self.helper._calc_mean(positions)[2]
-    def _probe_on_bed(self, site):
+    def _add_probe_offset(self, site):
         # calculate bed position by using the probe's offsets
         probe_offsets = self.probe.get_offsets()
         probe_site = list(site)
         probe_site[0] -= probe_offsets[0]
         probe_site[1] -= probe_offsets[1]
-        # move to probing position
-        pos = self.toolhead.get_position()
-        self.helper._move([None, None, pos[2] + self.helper.clearance],
-                          self.helper.lift_speed)
-        self.helper._move(probe_site, self.helper.speed)
-        if self.helper.first_fast:
-            # fast probe to get down first
-            self.helper._probe(self.probe.mcu_probe, self.probe.z_position,
-                               self.helper.probing_speed)
-        # probe it
-        return self.probe.run_probe(self.gcmd)[2]
+        return probe_site
     def _set_new_gcode_offset(self, offset):
         # reset gcode z offset to 0
         gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
@@ -327,7 +317,8 @@ class CalibrationState:
     def calibrate_z(self):
         self.helper.start_gcode.run_gcode_from_command()
         # probe the nozzle
-        nozzle_zero = self._probe_on_z_endstop(self.helper.nozzle_site)
+        nozzle_zero = self._probe_on_site(self.z_endstop,
+                                          self.helper.nozzle_site)
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
         # check if probe is attached and the switch is closing it
@@ -336,13 +327,12 @@ class CalibrationState:
             raise self.helper.printer.command_error("Probe switch not closed"
                                                     " - Probe not attached?")
         # probe the body of the switch
-        switch_zero = self._probe_on_z_endstop(self.helper.switch_site)
+        switch_zero = self._probe_on_site(self.z_endstop,
+                                          self.helper.switch_site)
         # probe position on bed
-        probe_zero = self._probe_on_bed(self.helper.bed_site)
-        # move up by retract_dist
-        self.helper._move([None, None,
-                           probe_zero + self.helper.retract_dist],
-                          self.helper.lift_speed)
+        probe_site = self._add_probe_offset(self.helper.bed_site)
+        probe_zero = self._probe_on_site(self.probe.mcu_probe, probe_site)
+
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero
                                + self.helper.switch_offset)
