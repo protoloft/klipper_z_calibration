@@ -25,6 +25,10 @@ And, if you love my work and would like to support me, please feel free to do th
 
 # Changes
 
+- **v0.9.2** (2022-07-08)
+  - The probe is now docked again before raising an error, if end_gcode is used (thanks to top-gun)
+  - Probings are more consistent now as the probing sequence is also applied for the bed probing
+  - More secure: the check for an attached probe is now after the movement to the probing site
 - **v0.9.1** (2022-04-06)
   - The dummy system service for Moonraker's update manager is removed :tada:
   - **:exclamation:Please update this plugin and Moonraker, adapt your moonraker.conf and execute
@@ -499,7 +503,7 @@ this:
 rename_existing: BASE_CALIBRATE_Z
 gcode:
     {% set bed_position = params.BED_POSITION|default('None') %}
-    CG28
+    G28                         # can also be a conditional homing macro
     M117 Z-Calibration..
     ATTACH_PROBE                # a macro for fetching the probe first
     {% if bed_position != 'None' %}
