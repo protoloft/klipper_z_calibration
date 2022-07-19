@@ -7,6 +7,7 @@
 import logging
 from mcu import MCU_endstop
 
+
 class ZCalibrationHelper:
     def __init__(self, config):
         self.state = None
@@ -35,7 +36,18 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
-        self.nozzle_site = self._get_site("nozzle_xy_position", "probe_nozzle")
+        try:
+            safe_z_home = self.printer.load_object(config, 'safe_z_home')
+            self.nozzle_site = [safe_z_home.home_x_pos, safe_z_home.home_y_pos]
+            try:
+                config.get("nozzle_xy_position") # Access the configuration setting if it is set, to stop `check_unused_options()` from blowing up
+                logging.warning("z_calibration: nozzle_xy_position is ignored if"
+                                "safe_z_home is configured.")
+            except Exception:
+                pass
+        except config.error:
+            self.nozzle_site = self._get_site("nozzle_xy_position",
+                                              "probe_nozzle")
         self.switch_site = self._get_site("switch_xy_position", "probe_switch")
         self.bed_site = self._get_site("bed_xy_position", "probe_bed", True)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
