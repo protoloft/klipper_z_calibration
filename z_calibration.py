@@ -438,8 +438,10 @@ class CalibrationState:
                                                     " MAX_DEVIATION=%.3f"
                                                     % (offset,
                                                     self.helper.max_deviation))
+        
+        avg_offset, offset_99 = get_historical_offset(self.helper.config)
+        
         if avg_offset is not None and offset_99 is not None:
-            avg_offset, offset_99 = get_historical_offset(self.helper.config)
             self.gcmd.respond_info("Z-CALIBRATION: HISTORICAL_OFFSET=%.3f"
                                " VARIANCE=%.3f SIGMA=%.3f 3_SIGMA=%.3f" 
                                % (avg_offset, abs(avg_offset - offset), offset_99/3.0, offset_99))
