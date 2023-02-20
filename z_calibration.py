@@ -62,9 +62,10 @@ def get_historical_offset(config):
         avg_offset += offset[0]/samples
         proper_offsets.append(offset[0])
     stdev_offset = statistics.stdev(proper_offsets)
+    offset_3_sigma = 3*stdev_offset
     c.close()
     conn.close()
-    return avg_offset, stdev_offset
+    return avg_offset, offset_3_sigma
 
 def reset_nozzle_offset(config):
     """Reset the nozzle offset."""
