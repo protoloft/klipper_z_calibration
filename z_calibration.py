@@ -440,6 +440,9 @@ class CalibrationState:
                                                     self.helper.max_deviation))
         # check if offset is far from historical values
         avg_offset, offset_99 = get_historical_offset(self.helper.config)
+        self.gcmd.respond_info("Z-CALIBRATION: HISTORICAL_OFFSET=%.3f"
+                               " VARIANCE=%.3f SIGMA=%.3f 3_SIGMA=%.3f" 
+                               % (avg_offset, abs(avg_offset - offset), offset_99/3.0, offset_99))
         if avg_offset is not None and abs(avg_offset - offset) > offset_99:
             self.helper.end_gcode.run_gcode_from_command()
             raise self.helper.printer.command_error("Offset is larger than 3 sigma"
