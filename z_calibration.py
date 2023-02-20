@@ -1,11 +1,83 @@
-
 # Klipper plugin for a selfcalibrating Z offset.
 #
 # Copyright (C) 2021-2022  Titus Meyer <info@protoloft.org>
+# Contributors:  JR Lomas <lomas.jr@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
 from mcu import MCU_endstop
+import sqlite3
+import time
+import math
+import statistics
+
+def create_database(config):
+    """Create the database for storing calibration data."""
+    conn = sqlite3.connect(config.get('database', 'database.db'))
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS nozzle_run(nozzle_run_id integer not null primary key autoincrement, unix_time integer not null)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS
+    calibration(nozzle_run_id integer, unix_time integer, endstop real, nozzle real, switch real, probe real, offset real)''')
+    conn.commit()
+    c.close()
+    conn.close()
+
+
+def insert_data(config, endstop, nozzle, switch, probe, offset):
+    """Insert data into the database."""
+    conn = sqlite3.connect(config.get('database', 'database.db'))
+    c = conn.cursor()
+    # Get unix time
+    unix_time = int(time.time())
+    res = c.execute('''SELECT MAX(nozzle_run_id) FROM nozzle_run''',)
+    nozzle_run_id = None
+    row = res.fetchone()
+    if row is not None and row[0] is not None:
+        nozzle_run_id = row[0]
+    else:
+        nozzle_run_id = reset_nozzle_offset(config)
+    c.execute('''INSERT INTO calibration VALUES(?,?,?,?,?,?,?)''',
+              (nozzle_run_id, unix_time, endstop, nozzle, switch, probe, offset))
+    conn.commit()
+    c.close()
+    conn.close()
+
+def get_historical_offset(config):
+    """Get the historical offset from the database."""
+    conn = sqlite3.connect(config.get('database', 'database.db'))
+    c = conn.cursor()
+    res = c.execute('''SELECT MAX(nozzle_run_id) as last_nozzle_run_id FROM nozzle_run''',)
+    nozzle_run_id = res.fetchone()[0]
+    # select number of rows
+    res = c.execute('''SELECT COUNT(*) as count FROM calibration WHERE nozzle_run_id = ?''', (nozzle_run_id,))
+    count = res.fetchone()[0]
+    if count < 10:
+        return None, None
+    samples = 10
+    res  = c.execute('''SELECT offset FROM calibration ORDER BY nozzle_run_id DESC LIMIT ?''',(samples,))
+    offsets = res.fetchall()
+    avg_offset = 0
+    proper_offsets = []
+    for offset in offsets:
+        avg_offset += offset[0]/samples
+        proper_offsets.append(offset[0])
+    stdev_offset = statistics.stdev(proper_offsets)
+    c.close()
+    conn.close()
+    return avg_offset, stdev_offset
+
+def reset_nozzle_offset(config):
+    """Reset the nozzle offset."""
+    conn = sqlite3.connect(config.get('database', 'database.db'))
+    c = conn.cursor()
+    unix_time = int(time.time())
+    c.execute('''INSERT INTO nozzle_run(unix_time) VALUES(?)''', (unix_time,))
+    res = c.execute('''SELECT MAX(nozzle_run_id) as last_nozzle_run_id FROM nozzle_run''',)
+    nozzle_run_id = res.fetchone()[0]
+    conn.commit()
+    c.close()
+    conn.close()
+    return nozzle_run_id
 
 class ZCalibrationHelper:
     def __init__(self, config):
@@ -56,6 +128,9 @@ class ZCalibrationHelper:
         self.gcode.register_command('PROBE_Z_ACCURACY',
                                     self.cmd_PROBE_Z_ACCURACY,
                                     desc=self.cmd_PROBE_Z_ACCURACY_help)
+        self.gcode.register_command('RESET_HISTORICAL_OFFSET',
+                                    self.cmd_RESET_HISTORICAL_OFFSET,
+                                    desc=self.cmd_RESET_HISTORICAL_OFFSET_help)
     def get_status(self, eventtime):
         return {'last_query': self.last_state,
                 'last_z_offset': self.last_z_offset}
@@ -104,6 +179,14 @@ class ZCalibrationHelper:
                     self.position_min = rail.position_min
     def _build_config(self):
         pass
+
+    cmd_RESET_HISTORICAL_OFFSET_help = ("Resets the historical offset"
+                                        "database")
+    def cmd_RESET_HISTORICAL_OFFSET(self, gcmd):
+        reset_nozzle_offset(self.config)
+        gcmd.respond_info("Historical offset reset")
+
+
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzle offset"
                             " to the print surface")
     def cmd_CALIBRATE_Z(self, gcmd):
@@ -121,7 +204,7 @@ class ZCalibrationHelper:
             # a round mesh/bed would not work here so far...
             try:
                 mesh = self.printer.lookup_object('bed_mesh', default=None)
-                rri = mesh.bmc.relative_reference_index    
+                rri = mesh.bmc.relative_reference_index
                 self.bed_site = mesh.bmc.points[rri]
                 logging.debug("Z-CALIBRATION probe bed_x=%.3f bed_y=%.3f"
                               % (self.bed_site[0], self.bed_site[1]))
@@ -181,7 +264,7 @@ class ZCalibrationHelper:
         gcmd.respond_info(
             "probe accuracy results: maximum %.6f, minimum %.6f, range %.6f,"
             " average %.6f, median %.6f, standard deviation %.6f" % (
-            max_value, min_value, range_value, avg_value, median, sigma))        
+            max_value, min_value, range_value, avg_value, median, sigma))
     def _get_site(self, name, legacy_prefix, optional=False):
         legacy_x = self.config.getfloat("%s_x" % (legacy_prefix), -1.0)
         legacy_y = self.config.getfloat("%s_y" % (legacy_prefix), -1.0)
@@ -345,6 +428,7 @@ class CalibrationState:
                                " SWITCH=%.3f PROBE=%.3f --> OFFSET=%.6f"
                                % (self.helper.z_homing, nozzle_zero,
                                   switch_zero, probe_zero, offset))
+        insert_data(self.helper.config, self.helper.z_homing, nozzle_zero, switch_zero,probe_zero, offset)
         # check max deviation
         if abs(offset) > self.helper.max_deviation:
             self.helper.end_gcode.run_gcode_from_command()
@@ -353,6 +437,14 @@ class CalibrationState:
                                                     " MAX_DEVIATION=%.3f"
                                                     % (offset,
                                                     self.helper.max_deviation))
+        # check if offset is far from historical values
+        avg_offset, offset_99 = get_historical_offset(self.helper.config)
+        if avg_offset is not None and abs(avg_offset - offset) > offset_99:
+            self.helper.end_gcode.run_gcode_from_command()
+            raise self.helper.printer.command_error("Offset is larger than 3 sigma"
+                                                    " allowed: OFFSET=%.3f"
+                                                    " HISTORICAL_OFFSET=%.3f.  Did you change the nozzle, if so, please issue RESET_HISTORICAL_OFFSET on the console."
+                                                    % (offset, offset_99))
         # set new offset
         self._set_new_gcode_offset(offset)
         # set states
@@ -360,4 +452,5 @@ class CalibrationState:
         self.helper.last_z_offset = offset
         self.helper.end_gcode.run_gcode_from_command()
 def load_config(config):
+    create_database(config)
     return ZCalibrationHelper(config)
