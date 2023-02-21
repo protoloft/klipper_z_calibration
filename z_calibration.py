@@ -262,14 +262,18 @@ class CalibrationState:
         self.probe = helper.printer.lookup_object('probe')
         self.toolhead = helper.printer.lookup_object('toolhead')
         self.gcode_move = helper.printer.lookup_object('gcode_move')
-    def _probe_on_site(self, endstop, site, check_probe=False):
+    def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False):
         pos = self.toolhead.get_position()
         if pos[2] < self.helper.clearance:
             # no clearance, better to move up
             self.helper._move([None, None, self.helper.clearance],
                               self.helper.lift_speed)
         # move to position
-        self.helper._move(list(site), self.helper.speed)
+        if split_xy:
+            self.helper._move([site[0], pos[1], None], self.helper.speed)
+            self.helper._move([site[0], site[1], site[2]], self.helper.speed)
+        else:
+            self.helper._move(site, self.helper.speed)
         if check_probe:
             # check if probe is attached and switch is closed
             time = self.toolhead.get_last_move_time()
@@ -325,7 +329,8 @@ class CalibrationState:
         self.helper.start_gcode.run_gcode_from_command()
         # probe the nozzle
         nozzle_zero = self._probe_on_site(self.z_endstop,
-                                          self.helper.nozzle_site)
+                                          self.helper.nozzle_site,
+                                          False, True)
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
         # probe the body of the switch
