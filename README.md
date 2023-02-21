@@ -25,6 +25,8 @@ And, if you love my work and would like to support me, please feel free to do th
 
 # Changes
 
+- **v0.9.3** (2022-..........)
+  - Split the first movement to the endstop into separate X and Y moves to prevent hitting the dock
 - **v0.9.2** (2022-07-08)
   - The probe is now docked again before raising an error, if end_gcode is used (thanks to top-gun)
   - Probings are more consistent now as the probing sequence is also applied for the bed probing
