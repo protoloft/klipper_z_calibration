@@ -1,7 +1,6 @@
-
-# Klipper plugin for a selfcalibrating Z offset.
+# Klipper plugin for a self-calibrating Z offset.
 #
-# Copyright (C) 2021-2022  Titus Meyer <info@protoloft.org>
+# Copyright (C) 2021-2023  Titus Meyer <info@protoloft.org>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
@@ -35,7 +34,7 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
-        self.nozzle_site = self._get_xy("nozzle_xy_position", "probe_nozzle")
+        self.nozzle_site = self._get_xy("nozzle_xy_position", "probe_nozzle", True)
         self.switch_site = self._get_xy("switch_xy_position", "probe_switch")
         self.bed_site = self._get_xy("bed_xy_position", "probe_bed", True)
         self.wiggle_offsets = self._get_xy("wiggle_xy_offsets", "wiggle_offset", True)
@@ -61,7 +60,7 @@ class ZCalibrationHelper:
         return {'last_query': self.last_state,
                 'last_z_offset': self.last_z_offset}
     def handle_connect(self):
-        # get z-endstop
+        # get z-endstop object
         for endstop, name in self.query_endstops.endstops:
             if name == 'z':
                 # check for virtual endstops..
@@ -70,6 +69,17 @@ class ZCalibrationHelper:
                                                     " is not supported for %s"
                                                     % (self.config.get_name()))
                 self.z_endstop = EndstopWrapper(self.config, endstop)
+        # get z-endstop position from safe_z_home
+        if self.nozzle_site is None:
+            safe_z_home = self.printer.lookup_object('safe_z_home',
+                                                     default=None)
+            if safe_z_home is None:
+                raise self.printer.config_error("No nozzle position"
+                                                " configured for %s"
+                                                % (self.config.get_name()))
+            self.nozzle_site = [safe_z_home.home_x_pos,
+                                safe_z_home.home_y_pos,
+                                None]
         # get probing settings
         probe = self.printer.lookup_object('probe', default=None)
         if probe is None:
