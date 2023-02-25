@@ -34,17 +34,11 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
-        self.nozzle_site = self._get_xy("nozzle_xy_position", "probe_nozzle",
-                                        True)
-        self.switch_site = self._get_xy("switch_xy_position", "probe_switch",
-                                        True)
-        self.switch_xy_offsets = self._get_xy("switch_xy_offsets",
-                                              "switch_offset",
-                                              True)
-        self.bed_site = self._get_xy("bed_xy_position", "probe_bed", True)
-        self.wiggle_offsets = self._get_xy("wiggle_xy_offsets",
-                                           "wiggle_offset",
-                                           True)
+        self.nozzle_site = self._get_xy("nozzle_xy_position", True)
+        self.switch_site = self._get_xy("switch_xy_position", True)
+        self.switch_xy_offsets = self._get_xy("switch_xy_offsets", True)
+        self.bed_site = self._get_xy("bed_xy_position", True)
+        self.wiggle_offsets = self._get_xy("wiggle_xy_offsets", True)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.start_gcode = gcode_macro.load_template(config, 'start_gcode', '')
         self.switch_gcode = gcode_macro.load_template(config,
@@ -140,9 +134,9 @@ class ZCalibrationHelper:
         if site_attr is not None:
             # set bed site from BED_POSITION parameter
             self.bed_site = self._parse_xy("BED_POSITION", site_attr)
-        elif self._get_xy("bed_xy_position", "probe_bed", True) is not None:
+        elif self._get_xy("bed_xy_position", True) is not None:
             # set bed site from configuration
-            self.bed_site = self._get_xy("bed_xy_position", "probe_bed", False)
+            self.bed_site = self._get_xy("bed_xy_position", False)
         else:
             # else get the mesh's relative reference index point
             # a round mesh/bed would not work here so far...
@@ -209,14 +203,9 @@ class ZCalibrationHelper:
             "probe accuracy results: maximum %.6f, minimum %.6f, range %.6f,"
             " average %.6f, median %.6f, standard deviation %.6f" % (
             max_value, min_value, range_value, avg_value, median, sigma))        
-    def _get_xy(self, name, legacy_prefix, optional=False):
-        legacy_x = self.config.getfloat("%s_x" % (legacy_prefix), -1.0)
-        legacy_y = self.config.getfloat("%s_y" % (legacy_prefix), -1.0)
-        if (optional and self.config.get(name, None) is None
-            and (legacy_x < 0 or legacy_y < 0)):
+    def _get_xy(self, name, optional=False):
+        if optional and self.config.get(name, None) is None:
             return None
-        if legacy_x >= 0 and legacy_y >= 0:
-            return [legacy_x, legacy_y, None]
         else:
             return self._parse_xy(name, self.config.get(name))
     def _parse_xy(self, name, site):
