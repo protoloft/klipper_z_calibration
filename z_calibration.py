@@ -34,10 +34,17 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
-        self.nozzle_site = self._get_xy("nozzle_xy_position", "probe_nozzle", True)
-        self.switch_site = self._get_xy("switch_xy_position", "probe_switch")
+        self.nozzle_site = self._get_xy("nozzle_xy_position", "probe_nozzle",
+                                        True)
+        self.switch_site = self._get_xy("switch_xy_position", "probe_switch",
+                                        True)
+        self.switch_xy_offsets = self._get_xy("switch_xy_offsets",
+                                              "switch_offset",
+                                              True)
         self.bed_site = self._get_xy("bed_xy_position", "probe_bed", True)
-        self.wiggle_offsets = self._get_xy("wiggle_xy_offsets", "wiggle_offset", True)
+        self.wiggle_offsets = self._get_xy("wiggle_xy_offsets",
+                                           "wiggle_offset",
+                                           True)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.start_gcode = gcode_macro.load_template(config, 'start_gcode', '')
         self.switch_gcode = gcode_macro.load_template(config,
@@ -79,6 +86,15 @@ class ZCalibrationHelper:
                                                 % (self.config.get_name()))
             self.nozzle_site = [safe_z_home.home_x_pos,
                                 safe_z_home.home_y_pos,
+                                None]
+        # check/calculate switch position by offsets
+        if self.switch_site is None:
+            if self.switch_xy_offsets is None:
+                raise self.printer.config_error("No switch position"
+                                                " configured for %s"
+                                                % (self.config.get_name()))
+            self.switch_site = [self.nozzle_site[0] + self.switch_xy_offsets[0],
+                                self.nozzle_site[1] + self.switch_xy_offsets[1],
                                 None]
         # get probing settings
         probe = self.printer.lookup_object('probe', default=None)
