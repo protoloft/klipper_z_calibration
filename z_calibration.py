@@ -35,9 +35,10 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
-        self.nozzle_site = self._get_site("nozzle_xy_position", "probe_nozzle")
-        self.switch_site = self._get_site("switch_xy_position", "probe_switch")
-        self.bed_site = self._get_site("bed_xy_position", "probe_bed", True)
+        self.nozzle_site = self._get_xy("nozzle_xy_position", "probe_nozzle")
+        self.switch_site = self._get_xy("switch_xy_position", "probe_switch")
+        self.bed_site = self._get_xy("bed_xy_position", "probe_bed", True)
+        self.wiggle_offsets = self._get_xy("wiggle_xy_offsets", "wiggle_offset", True)
         gcode_macro = self.printer.load_object(config, 'gcode_macro')
         self.start_gcode = gcode_macro.load_template(config, 'start_gcode', '')
         self.switch_gcode = gcode_macro.load_template(config,
@@ -112,10 +113,10 @@ class ZCalibrationHelper:
         site_attr = gcmd.get("BED_POSITION", None)
         if site_attr is not None:
             # set bed site from BED_POSITION parameter
-            self.bed_site = self._parse_site("BED_POSITION", site_attr)
-        elif self._get_site("bed_xy_position", "probe_bed", True) is not None:
+            self.bed_site = self._parse_xy("BED_POSITION", site_attr)
+        elif self._get_xy("bed_xy_position", "probe_bed", True) is not None:
             # set bed site from configuration
-            self.bed_site = self._get_site("bed_xy_position", "probe_bed", False)
+            self.bed_site = self._get_xy("bed_xy_position", "probe_bed", False)
         else:
             # else get the mesh's relative reference index point
             # a round mesh/bed would not work here so far...
@@ -182,7 +183,7 @@ class ZCalibrationHelper:
             "probe accuracy results: maximum %.6f, minimum %.6f, range %.6f,"
             " average %.6f, median %.6f, standard deviation %.6f" % (
             max_value, min_value, range_value, avg_value, median, sigma))        
-    def _get_site(self, name, legacy_prefix, optional=False):
+    def _get_xy(self, name, legacy_prefix, optional=False):
         legacy_x = self.config.getfloat("%s_x" % (legacy_prefix), -1.0)
         legacy_y = self.config.getfloat("%s_y" % (legacy_prefix), -1.0)
         if (optional and self.config.get(name, None) is None
@@ -191,15 +192,15 @@ class ZCalibrationHelper:
         if legacy_x >= 0 and legacy_y >= 0:
             return [legacy_x, legacy_y, None]
         else:
-            return self._parse_site(name, self.config.get(name))
-    def _parse_site(self, name, site):
+            return self._parse_xy(name, self.config.get(name))
+    def _parse_xy(self, name, site):
         try:
             x_pos, y_pos = site.split(',')
             return [float(x_pos), float(y_pos), None]
         except:
             raise self.config.error("Unable to parse %s in %s"
                                     % (name, self.config.get_name()))
-    def _probe(self, mcu_endstop, z_position, speed):
+    def _probe(self, mcu_endstop, z_position, speed, wiggle=False):
             toolhead = self.printer.lookup_object('toolhead')
             pos = toolhead.get_position()
             pos[2] = z_position
@@ -209,6 +210,12 @@ class ZCalibrationHelper:
             # retract
             self._move([None, None, curpos[2] + self.retract_dist],
                        self.lift_speed)
+            if wiggle and self.wiggle_offsets is not None:
+                self._move([curpos[0] + self.wiggle_offsets[0],
+                            curpos[1] + self.wiggle_offsets[1],
+                            None],
+                            self.speed)
+                self._move([curpos[0], curpos[1], None], self.speed)
             self.gcode.respond_info("probe at %.3f,%.3f is z=%.6f"
                 % (curpos[0], curpos[1], curpos[2]))
             return curpos
@@ -262,7 +269,8 @@ class CalibrationState:
         self.probe = helper.printer.lookup_object('probe')
         self.toolhead = helper.printer.lookup_object('toolhead')
         self.gcode_move = helper.printer.lookup_object('gcode_move')
-    def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False):
+    def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False,
+                       wiggle=False):
         pos = self.toolhead.get_position()
         if pos[2] < self.helper.clearance:
             # no clearance, better to move up
@@ -284,14 +292,15 @@ class CalibrationState:
         if self.helper.first_fast:
             # first probe just to get down faster
             self.helper._probe(endstop, self.helper.position_min,
-                               self.helper.probing_speed)
+                               self.helper.probing_speed, wiggle=wiggle)
         retries = 0
         positions = []
         while len(positions) < self.helper.samples:
             # probe with second probing speed
             curpos = self.helper._probe(endstop,
                                         self.helper.position_min,
-                                        self.helper.second_speed)
+                                        self.helper.second_speed,
+                                        wiggle=wiggle)
             positions.append(curpos[:3])
             # check tolerance
             z_positions = [p[2] for p in positions]
@@ -330,18 +339,20 @@ class CalibrationState:
         # probe the nozzle
         nozzle_zero = self._probe_on_site(self.z_endstop,
                                           self.helper.nozzle_site,
-                                          False, True)
+                                          check_probe=False,
+                                          split_xy=True,
+                                          wiggle=True)
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
         # probe the body of the switch
         switch_zero = self._probe_on_site(self.z_endstop,
                                           self.helper.switch_site,
-                                          True)
+                                          check_probe=True)
         # probe position on bed
         probe_site = self._add_probe_offset(self.helper.bed_site)
         probe_zero = self._probe_on_site(self.probe.mcu_probe,
                                          probe_site,
-                                         True)
+                                         check_probe=True)
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero
                                + self.helper.switch_offset)
