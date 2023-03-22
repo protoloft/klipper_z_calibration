@@ -106,7 +106,7 @@ class ZCalibrationHelper:
             self.lift_speed = probe.lift_speed
         if self.clearance is None:
             self.clearance = probe.z_offset * 2
-        if self.clearance == 0:
+        if self.clearance < 3:
             self.clearance = 20 # defaults to 20mm
         if self.samples_result is None:
             self.samples_result = probe.samples_result
