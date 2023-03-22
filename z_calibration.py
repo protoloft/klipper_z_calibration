@@ -13,6 +13,7 @@ class ZCalibrationHelper:
         self.z_homing = None
         self.last_state = False
         self.last_z_offset = 0.
+        self.position_z_endstop = None
         self.config = config
         self.printer = config.get_printer()
         self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
@@ -123,6 +124,7 @@ class ZCalibrationHelper:
                     self.retract_dist = rail.homing_retract_dist
                 if self.position_min is None:
                     self.position_min = rail.position_min
+                self.position_z_endstop = rail.position_endstop
     def _build_config(self):
         pass
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzle offset"
@@ -372,16 +374,21 @@ class CalibrationState:
         offset = probe_zero - (switch_zero - nozzle_zero
                                + self.helper.switch_offset)
         # print result
-        self.gcmd.respond_info("Z-CALIBRATION: ENDSTOP=%.3f NOZZLE=%.3f"
-                               " SWITCH=%.3f PROBE=%.3f --> OFFSET=%.6f"
-                               % (self.helper.z_homing, nozzle_zero,
-                                  switch_zero, probe_zero, offset))
+        self.gcmd.respond_info("Z-CALIBRATION: probe=%.3f - (switch=%.3f"
+                               " - nozzle=%.3f + switch_offset=%.3f) -->"
+                               " new offset=%.6f"
+                               % (probe_zero, switch_zero, nozzle_zero,
+                                  self.helper.switch_offset, offset))
+        self.gcmd.respond_info("Z-CALIBRATION: position_endstop=%.3f -"
+                               " offset=%.6f --> new z position_endstop=%.3f"
+                               % (self.helper.position_z_endstop, offset,
+                                  self.helper.position_z_endstop - offset))
         # check max deviation
         if abs(offset) > self.helper.max_deviation:
             self.helper.end_gcode.run_gcode_from_command()
             raise self.helper.printer.command_error("Offset is larger as"
-                                                    " allowed: OFFSET=%.3f"
-                                                    " MAX_DEVIATION=%.3f"
+                                                    " allowed: offset=%.3f"
+                                                    " > max_deviation=%.3f"
                                                     % (offset,
                                                     self.helper.max_deviation))
         # set new offset
