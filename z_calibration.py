@@ -58,6 +58,9 @@ class ZCalibrationHelper:
         self.gcode.register_command('PROBE_Z_ACCURACY',
                                     self.cmd_PROBE_Z_ACCURACY,
                                     desc=self.cmd_PROBE_Z_ACCURACY_help)
+        self.gcode.register_command('CALCULATE_SWITCH_OFFSET',
+                                    self.cmd_CALCULATE_SWITCH_OFFSET,
+                                    desc=self.cmd_CALCULATE_SWITCH_OFFSET_help)
     def get_status(self, eventtime):
         return {'last_query': self.last_state,
                 'last_z_offset': self.last_z_offset}
@@ -205,6 +208,23 @@ class ZCalibrationHelper:
             "probe accuracy results: maximum %.6f, minimum %.6f, range %.6f,"
             " average %.6f, median %.6f, standard deviation %.6f" % (
             max_value, min_value, range_value, avg_value, median, sigma))        
+    cmd_CALCULATE_SWITCH_OFFSET_help = ("Calculates a switch_offset based on"
+                                        " the current z position")
+    def cmd_CALCULATE_SWITCH_OFFSET(self, gcmd):
+        if self.last_z_offset is None:
+            raise gcmd.error("Must calibrate z first")
+        toolhead = self.printer.lookup_object('toolhead')
+        pos = toolhead.get_position()
+        new_switch_offset = self.switch_offset - (pos[2] - self.last_z_offset)
+        if new_switch_offset > 0.0:
+            gcmd.respond_info("switch_offset=%.3f - (current_z=%.3f - z_offset=%.3f"
+                              ") --> new switch_offset=%.3f"
+                              % (self.switch_offset, pos[2],
+                                 self.last_z_offset, new_switch_offset))
+        else:
+            gcmd.respond_info("The resulting switch offset is negative! Either"
+                              " the nozzle is still too far away or something"
+                              " else is wrong...")
     def _get_xy(self, name, optional=False):
         if optional and self.config.get(name, None) is None:
             return None
