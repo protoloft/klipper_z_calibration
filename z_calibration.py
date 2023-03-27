@@ -147,7 +147,7 @@ class ZCalibrationHelper:
         pos = toolhead.get_position()
         if pos[2] < self.clearance:
             # no clearance, better to move up
-            self._move([None, None, pos[2] + self.clearance], lift_speed)
+            self._move([None, None, self.clearance], lift_speed)
         # move to z-endstop position
         self._move(list(self.nozzle_site), self.speed)
         pos = toolhead.get_position()
@@ -266,7 +266,7 @@ class CalibrationState:
         pos = self.toolhead.get_position()
         if pos[2] < self.helper.clearance:
             # no clearance, better to move up
-            self.helper._move([None, None, pos[2] + self.helper.clearance],
+            self.helper._move([None, None, self.helper.clearance],
                               self.helper.lift_speed)
         # move to position
         self.helper._move(list(site), self.helper.speed)
