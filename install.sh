@@ -87,7 +87,7 @@ SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
 while getopts "k:n:" arg; do
     case $arg in
         k) KLIPPER_PATH=$OPTARG;;
-	n) NUM_INSTALLS=$OPTARG;;
+	    n) NUM_INSTALLS=$OPTARG;;
     esac
 done
 
