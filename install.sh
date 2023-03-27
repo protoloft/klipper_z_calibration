@@ -94,6 +94,6 @@ done
 # Run steps
 verify_ready
 check_klipper
-#link_extension
-#remove_service
+link_extension
+remove_service
 restart_klipper
