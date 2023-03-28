@@ -36,7 +36,7 @@ The latest release notes are [here](https://github.com/protoloft/klipper_z_calib
 
 A great how-to video by Kapman: [https://youtu.be/oQYHFecsTto](https://youtu.be/oQYHFecsTto)
 
-##### And if you are looking for an RRF version of this automatic z-offset calibration
+### And if you are looking for an RRF version of this automatic z-offset calibration
 
 You can find one [here](https://github.com/pRINTERnOODLE/Auto-Z-calibration-for-RRF-3.3-or-later-and-Klicky-Probe) from pRINTERnOODLE - This is really fantastic to see :tada:
 
@@ -45,10 +45,6 @@ You can find one [here](https://github.com/pRINTERnOODLE/Auto-Z-calibration-for-
 And if you like my work and want to support me, you can do so here:
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/X8X1C0DTD)
-
-## A Quick Demonstration
-
-<div style="width: 100%; height: 0px; position: relative; padding-bottom: 56.250%;"><iframe src="https://streamable.com/e/wclrmc" frameborder="0" width="100%" height="100%" allowfullscreen style="width: 100%; height: 100%; position: absolute;"></iframe></div>
 
 ## Disclaimer
 
