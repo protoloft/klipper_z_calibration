@@ -19,7 +19,9 @@ class ZCalibrationHelper:
         self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
         self.max_deviation = config.getfloat('max_deviation', 1.0, above=0.)
         self.speed = config.getfloat('speed', 50.0, above=0.)
+        # clearance is deprecated
         self.clearance = config.getfloat('clearance', None, above=0.)
+        self.safe_z_height = config.getfloat('safe_z_height', None, above=0.)
         self.samples = config.getint('samples', None, minval=1)
         self.tolerance = config.getfloat('samples_tolerance', None, above=0.)
         self.retries = config.getint('samples_tolerance_retries',
@@ -107,10 +109,13 @@ class ZCalibrationHelper:
             self.retries = probe.samples_retries
         if self.lift_speed is None:
             self.lift_speed = probe.lift_speed
-        if self.clearance is None:
-            self.clearance = probe.z_offset * 2
-        if self.clearance < 3:
+        # clearance is deprecated
+        if self.clearance is not None and self.clearance == 0:
             self.clearance = 20 # defaults to 20mm
+        if self.safe_z_height is None:
+            self.safe_z_height = probe.z_offset * 2
+        if self.safe_z_height < 3:
+            self.safe_z_height = 20 # defaults to 20mm
         if self.samples_result is None:
             self.samples_result = probe.samples_result
     def handle_home_rails_end(self, homing_state, rails):
@@ -171,9 +176,7 @@ class ZCalibrationHelper:
                                              self.retract_dist, above=0.)
         toolhead = self.printer.lookup_object('toolhead')
         pos = toolhead.get_position()
-        if pos[2] < self.clearance:
-            # no clearance, better to move up
-            self._move([None, None, self.clearance], lift_speed)
+        self._move_safe_z(pos, lift_speed)
         # move to z-endstop position
         self._move(list(self.nozzle_site), self.speed)
         pos = toolhead.get_position()
@@ -258,6 +261,16 @@ class ZCalibrationHelper:
             return curpos
     def _move(self, coord, speed):
         self.printer.lookup_object('toolhead').manual_move(coord, speed)
+    def _move_safe_z(self, pos, lift_speed):
+        # clearance is deprecated
+        if self.clearance is not None:
+            if pos[2] < self.clearance:
+                # no clearance, better to move up (relative)
+                self._move([None, None, pos[2] + self.clearance], lift_speed)
+        else:
+            if pos[2] < self.safe_z_height:
+                # no safe z position, better to move up (absolute)
+                self._move([None, None, self.safe_z_height], lift_speed)
     def _calc_mean(self, positions):
         count = float(len(positions))
         return [sum([pos[i] for pos in positions]) / count
@@ -273,20 +286,22 @@ class ZCalibrationHelper:
     def _log_config(self):
         logging.debug("Z-CALIBRATION: switch_offset=%.3f, max_deviation=%.3f,"
                       " speed=%.3f, samples=%i, tolerance=%.3f, retries=%i,"
-                      " samples_result=%s, lift_speed=%.3f, clearance=%.3f,"
-                      " probing_speed=%.3f, second_speed=%.3f,"
-                      " retract_dist=%.3f, position_min=%.3f,"
-                      " probe_nozzle_x=%.3f, probe_nozzle_y=%.3f,"
-                      " probe_switch_x=%.3f, probe_switch_y=%.3f,"
-                      " probe_bed_x=%.3f, probe_bed_y=%.3f"
+                      " samples_result=%s, lift_speed=%.3f,"
+                      " safe_z_height=%.3f, probing_speed=%.3f,"
+                      " second_speed=%.3f, retract_dist=%.3f,"
+                      " position_min=%.3f, probe_nozzle_x=%.3f,"
+                      " probe_nozzle_y=%.3f, probe_switch_x=%.3f,"
+                      " probe_switch_y=%.3f, probe_bed_x=%.3f,"
+                      " probe_bed_y=%.3f"
                       % (self.switch_offset, self.max_deviation, self.speed,
                          self.samples, self.tolerance, self.retries,
-                         self.samples_result, self.lift_speed, self.clearance,
-                         self.probing_speed, self.second_speed,
-                         self.retract_dist, self.position_min,
-                         self.nozzle_site[0], self.nozzle_site[1],
-                         self.switch_site[0], self.switch_site[1],
-                         self.bed_site[0], self.bed_site[1]))
+                         self.samples_result, self.lift_speed,
+                         self.safe_z_height, self.probing_speed,
+                         self.second_speed, self.retract_dist,
+                         self.position_min, self.nozzle_site[0],
+                         self.nozzle_site[1], self.switch_site[0],
+                         self.switch_site[1], self.bed_site[0],
+                         self.bed_site[1]))
 class EndstopWrapper:
     def __init__(self, config, endstop):
         self.mcu_endstop = endstop
@@ -309,10 +324,7 @@ class CalibrationState:
     def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False,
                        wiggle=False):
         pos = self.toolhead.get_position()
-        if pos[2] < self.helper.clearance:
-            # no clearance, better to move up
-            self.helper._move([None, None, self.helper.clearance],
-                              self.helper.lift_speed)
+        self.helper._move_safe_z(pos, self.helper.lift_speed)
         # move to position
         if split_xy:
             self.helper._move([site[0], pos[1], None], self.helper.speed)
