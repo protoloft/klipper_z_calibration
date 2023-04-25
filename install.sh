@@ -5,6 +5,7 @@ KLIPPER_PATH="${HOME}/klipper"
 SYSTEMDDIR="/etc/systemd/system"
 MOONRAKER_CONFIG="${HOME}/printer_data/config/moonraker.conf"
 MOONRAKER_FALLBACK="${HOME}/klipper_config/moonraker.conf"
+NUM_INSTALLS=0
 
 # Force script to exit if an error occurs
 set -e
@@ -12,22 +13,44 @@ set -e
 # Step 1: Check for root user
 verify_ready()
 {
+    # check for root user
     if [ "$EUID" -eq 0 ]; then
         echo "This script must not run as root"
         exit -1
+    fi
+    # output used number of installs
+    if [[ $NUM_INSTALLS == 0 ]]; then
+	    echo "Defaulted to one klipper install, if more than one instance, use -n"
+    else
+	    echo "Number of Installs Selected: $NUM_INSTALLS"
+    fi
+    # Fall back to old config
+    if [ ! -f "$MOONRAKER_CONFIG" ]; then
+        echo "${MOONRAKER_CONFIG} does not exist. Falling back to ${MOONRAKER_FALLBACK}"
+        MOONRAKER_CONFIG="$MOONRAKER_FALLBACK"
     fi
 }
 
 # Step 2:  Verify Klipper has been installed
 check_klipper()
 {
-    if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper.service")" ]; then
-        echo "Klipper service found!"
+    if [[ $NUM_INSTALLS == 0 ]]; then
+        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper.service")" ]; then
+            echo "Klipper service found!"
+        else
+            echo "Klipper service not found, please install Klipper first"
+            exit -1
+        fi
     else
-        echo "Klipper service not found, please install Klipper first"
-        exit -1
-    fi
-
+		for (( klip = 1; klip<=$NUM_INSTALLS; klip++ )); do
+			if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper-$klip.service")" ]; then
+				echo "klipper-$klip.service found!"
+			else
+				echo "klipper-$klip.service NOT found, please ensure you've entered the correct number of klipper instances you're running!"
+				exit -1
+			fi			
+		done	
+	fi
 }
 
 # Step 3: Check folders
@@ -100,9 +123,17 @@ add_updater()
 # Step 7: Restarting Klipper
 restart_klipper()
 {
-    echo -n "Restarting Klipper... "
-    sudo systemctl restart klipper
-    echo "[OK]"
+    if [[ $NUM_INSTALLS == 0 ]]; then
+        echo -n "Restarting Klipper... "
+        sudo systemctl restart klipper
+        echo "[OK]"
+    else
+	    for (( klip = 1; klip<=$NUM_INSTALLS; klip++)); do
+            echo -n "Restarting Klipper-$klip... "
+            sudo systemctl restart klipper-$klip
+            echo "[OK]"
+	    done
+    fi
 }
 
 uinstall()
@@ -122,15 +153,16 @@ uinstall()
 
 usage()
 {
-    echo "Usage: $(basename $0) [-k <Klipper path>] [-m <Moonraker config file>] [-u]" 1>&2;
+    echo "Usage: $(basename $0) [-k <Klipper path>] [-m <Moonraker config file>] [-n <number klipper instances>] [-u]" 1>&2;
     exit 1;
 }
 
 # Command parsing
-while getopts ":k:m:uh" OPTION; do
+while getopts ":k:m:n:uh" OPTION; do
     case "$OPTION" in
         k) KLIPPER_PATH="$OPTARG" ;;
         m) MOONRAKER_CONFIG="$OPTARG" ;;
+        n) NUM_INSTALLS="$OPTARG" ;;
         u) UNINSTALL=1 ;;
         h | ?) usage ;;
     esac
