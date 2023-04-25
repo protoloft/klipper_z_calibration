@@ -25,7 +25,7 @@ always be perfect - no matter which nozzle or new flex-plate is being tested.
 
 ## Documentation
 
-Visit the [Wiki](https://github.com/protoloft/klipper_z_calibration/wiki) to view the full documentation.
+Visit the [Wiki](https://github.com/protoloft/klipper_z_calibration/wiki) to view the full documentation for this Klipper plugin.
 
 The latest release notes are [here](https://github.com/protoloft/klipper_z_calibration/wiki/Changelog).
 
