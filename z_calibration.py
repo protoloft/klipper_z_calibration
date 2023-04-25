@@ -17,7 +17,10 @@ class ZCalibrationHelper:
         self.config = config
         self.printer = config.get_printer()
         self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
+        # max_deviation is deprecated
         self.max_deviation = config.getfloat('max_deviation', 1.0, above=0.)
+        self.offset_margins = self._get_offset_margins('offset_margins',
+                                                     '-1.0,1.0')
         self.speed = config.getfloat('speed', 50.0, above=0.)
         # clearance is deprecated
         self.clearance = config.getfloat('clearance', None, above=0.)
@@ -240,6 +243,19 @@ class ZCalibrationHelper:
         except:
             raise self.config.error("Unable to parse %s in %s"
                                     % (name, self.config.get_name()))
+    def _get_offset_margins(self, name, default):
+        try:
+            margins = self.config.get(name, default).split(',')
+            for i, val in enumerate(margins):
+                margins[i] = float(val)
+            if len(margins) == 1:
+                val = abs(margins[0])
+                margins[0] = -val
+                margins[1] = val
+            return margins
+        except:
+            raise self.config.error("Unable to parse %s in %s"
+                                    % (name, self.config.get_name()))
     def _probe(self, mcu_endstop, z_position, speed, wiggle=False):
             toolhead = self.printer.lookup_object('toolhead')
             pos = toolhead.get_position()
@@ -284,8 +300,9 @@ class ZCalibrationHelper:
         # even number of samples
         return self._calc_mean(z_sorted[middle-1:middle+1])
     def _log_config(self):
-        logging.debug("Z-CALIBRATION: switch_offset=%.3f, max_deviation=%.3f,"
-                      " speed=%.3f, samples=%i, tolerance=%.3f, retries=%i,"
+        logging.debug("Z-CALIBRATION: switch_offset=%.3f,"
+                      " offset_margins=%.3f,%.3f, speed=%.3f,"
+                      " samples=%i, tolerance=%.3f, retries=%i,"
                       " samples_result=%s, lift_speed=%.3f,"
                       " safe_z_height=%.3f, probing_speed=%.3f,"
                       " second_speed=%.3f, retract_dist=%.3f,"
@@ -293,7 +310,8 @@ class ZCalibrationHelper:
                       " probe_nozzle_y=%.3f, probe_switch_x=%.3f,"
                       " probe_switch_y=%.3f, probe_bed_x=%.3f,"
                       " probe_bed_y=%.3f"
-                      % (self.switch_offset, self.max_deviation, self.speed,
+                      % (self.switch_offset, self.offset_margins[0],
+                         self.offset_margins[1], self.speed,
                          self.samples, self.tolerance, self.retries,
                          self.samples_result, self.lift_speed,
                          self.safe_z_height, self.probing_speed,
@@ -321,6 +339,8 @@ class CalibrationState:
         self.probe = helper.printer.lookup_object('probe')
         self.toolhead = helper.printer.lookup_object('toolhead')
         self.gcode_move = helper.printer.lookup_object('gcode_move')
+        self.max_deviation = helper.max_deviation
+        self.offset_margins = helper.offset_margins
     def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False,
                        wiggle=False):
         pos = self.toolhead.get_position()
@@ -411,18 +431,28 @@ class CalibrationState:
                                " new offset=%.6f"
                                % (probe_zero, switch_zero, nozzle_zero,
                                   self.helper.switch_offset, offset))
-        self.gcmd.respond_info("Z-CALIBRATION: position_endstop=%.3f -"
-                               " offset=%.6f --> new z position_endstop=%.3f"
+        self.gcmd.respond_info("HINT: z position_endstop=%.3f - offset=%.6f"
+                               " --> possible z position_endstop=%.3f"
                                % (self.helper.position_z_endstop, offset,
                                   self.helper.position_z_endstop - offset))
-        # check max deviation
-        if abs(offset) > self.helper.max_deviation:
+        # check offset margins
+        if (self.max_deviation is not None # deprecated
+            and abs(offset) > self.max_deviation):
             self.helper.end_gcode.run_gcode_from_command()
-            raise self.helper.printer.command_error("Offset is larger as"
+            raise self.helper.printer.command_error("Offset is greater than"
                                                     " allowed: offset=%.3f"
                                                     " > max_deviation=%.3f"
                                                     % (offset,
-                                                    self.helper.max_deviation))
+                                                    self.max_deviation))
+        elif (offset < self.offset_margins[0]
+              or offset > self.offset_margins[1]):
+            self.helper.end_gcode.run_gcode_from_command()
+            raise self.helper.printer.command_error("Offset %.3f is outside"
+                                                    " the configured range of"
+                                                    " min=%.3f and max=%.3f"
+                                                    % (offset,
+                                                       self.offset_margins[0],
+                                                       self.offset_margins[1]))
         # set new offset
         self._set_new_gcode_offset(offset)
         # set states
