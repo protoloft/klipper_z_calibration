@@ -218,7 +218,7 @@ class ZCalibrationHelper:
                                         " the current z position")
     def cmd_CALCULATE_SWITCH_OFFSET(self, gcmd):
         if self.last_z_offset is None:
-            raise gcmd.error("Must calibrate z first")
+            raise gcmd.error("Must run CALIBRATE_Z first")
         toolhead = self.printer.lookup_object('toolhead')
         pos = toolhead.get_position()
         new_switch_offset = self.switch_offset - (pos[2] - self.last_z_offset)
@@ -251,7 +251,7 @@ class ZCalibrationHelper:
             if len(margins) == 1:
                 val = abs(margins[0])
                 margins[0] = -val
-                margins[1] = val
+                margins.append(val)
             return margins
         except:
             raise self.config.error("Unable to parse %s in %s"
