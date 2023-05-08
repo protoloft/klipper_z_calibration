@@ -18,7 +18,7 @@ class ZCalibrationHelper:
         self.printer = config.get_printer()
         self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
         # max_deviation is deprecated
-        self.max_deviation = config.getfloat('max_deviation', 1.0, above=0.)
+        self.max_deviation = config.getfloat('max_deviation', None, above=0.)
         self.offset_margins = self._get_offset_margins('offset_margins',
                                                      '-1.0,1.0')
         self.speed = config.getfloat('speed', 50.0, above=0.)
