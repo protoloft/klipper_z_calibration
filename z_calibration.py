@@ -151,18 +151,22 @@ class ZCalibrationHelper:
             # set bed site from configuration
             self.bed_site = self._get_xy("bed_xy_position", False)
         else:
-            # else get the mesh's relative reference index point
-            # a round mesh/bed would not work here so far...
+            # else get the mesh's zero reference position
             try:
                 mesh = self.printer.lookup_object('bed_mesh', default=None)
-                rri = mesh.bmc.relative_reference_index    
-                self.bed_site = mesh.bmc.points[rri]
+                if (hasattr(mesh.bmc, 'zero_ref_pos')
+                    and mesh.bmc.zero_ref_pos is not None):
+                    self.bed_site = mesh.bmc.zero_ref_pos
+                else:
+                    # trying to read the deprecated rri
+                    rri = mesh.bmc.relative_reference_index    
+                    self.bed_site = mesh.bmc.points[rri]
                 logging.debug("Z-CALIBRATION probe bed_x=%.3f bed_y=%.3f"
                               % (self.bed_site[0], self.bed_site[1]))
             except:
                 raise gcmd.error("Either use the BED_POSITION parameter,"
                                  " configure a bed_xy_position or define"
-                                 " a mesh with a relative_reference_index"
+                                 " a mesh with a zero_reference_position"
                                  " for %s" % (self.config.get_name()))
         self._log_config()
         state = CalibrationState(self, gcmd)
