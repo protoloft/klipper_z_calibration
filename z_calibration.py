@@ -19,11 +19,13 @@ class ZCalibrationHelper:
         self.switch_offset = config.getfloat('switch_offset', 0.0, above=0.)
         # max_deviation is deprecated
         self.max_deviation = config.getfloat('max_deviation', None, above=0.)
+        config.deprecate('max_deviation')
         self.offset_margins = self._get_offset_margins('offset_margins',
                                                      '-1.0,1.0')
         self.speed = config.getfloat('speed', 50.0, above=0.)
         # clearance is deprecated
         self.clearance = config.getfloat('clearance', None, above=0.)
+        config.deprecate('clearance')
         self.safe_z_height = config.getfloat('safe_z_height', None, above=0.)
         self.samples = config.getint('samples', None, minval=1)
         self.tolerance = config.getfloat('samples_tolerance', None, above=0.)
