@@ -143,6 +143,7 @@ class ZCalibrationHelper:
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzle offset"
                             " to the print surface")
     def cmd_CALIBRATE_Z(self, gcmd):
+        self.last_state = False
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
         site_attr = gcmd.get("BED_POSITION", None)
