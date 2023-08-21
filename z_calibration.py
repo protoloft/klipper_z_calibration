@@ -420,6 +420,7 @@ class CalibrationState:
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
         # probe the body of the switch
+        self.probe.multi_probe_begin()
         switch_zero = self._probe_on_site(self.z_endstop,
                                           self.helper.switch_site,
                                           check_probe=True)
@@ -428,6 +429,7 @@ class CalibrationState:
         probe_zero = self._probe_on_site(self.probe.mcu_probe,
                                          probe_site,
                                          check_probe=True)
+        self.probe.multi_probe_end()
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero
                                + self.helper.switch_offset)
