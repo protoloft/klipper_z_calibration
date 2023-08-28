@@ -146,6 +146,17 @@ class ZCalibrationHelper:
         self.last_state = False
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
+        site_attr = gcmd.get("NOZZLE_POSITION", None)
+        if site_attr is not None:
+            # set nozzle site from NOZZLE_POSITION parameter
+            self.nozzle_site = self._parse_xy("NOZZLE_POSITION", site_attr)
+        elif self._get_xy("nozzle_xy_position", True) is not None:
+            # set nozzle site from configuration
+            self.nozzle_site = self._get_xy("nozzle_xy_position", False)
+        else:
+            raise gcmd.error("Either use the NOZZLE_POSITION parameter"
+                             " or configure a nozzle_xy_position for %s"
+                             % (self.config.get_name()))
         site_attr = gcmd.get("BED_POSITION", None)
         if site_attr is not None:
             # set bed site from BED_POSITION parameter
