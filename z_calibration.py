@@ -68,6 +68,9 @@ class ZCalibrationHelper:
         self.gcode.register_command('CALCULATE_SWITCH_OFFSET',
                                     self.cmd_CALCULATE_SWITCH_OFFSET,
                                     desc=self.cmd_CALCULATE_SWITCH_OFFSET_help)
+        self.gcode.register_command('SET_SWITCH_OFFSET',
+                                    self.cmd_SET_SWITCH_OFFSET,
+                                    desc=self.cmd_SET_SWITCH_OFFSET_help)
     def get_status(self, eventtime):
         return {'last_query': self.last_state,
                 'last_z_offset': self.last_z_offset}
@@ -237,6 +240,17 @@ class ZCalibrationHelper:
             gcmd.respond_info("The resulting switch offset is negative! Either"
                               " the nozzle is still too far away or something"
                               " else is wrong...")
+            
+    cmd_SET_SWITCH_OFFSET_help = ("Does set the used switch_offset to the defined value usage: SET_SWITCH_OFFSET OFFSET=0.5")
+    def cmd_SET_SWITCH_OFFSET(self, gcmd):
+        new_switch_offset = gcmd.get_float("OFFSET", self.switch_offset, above=0.)
+        if new_switch_offset > 0.0:
+            self.switch_offset = new_switch_offset
+            gcmd.respond_info("New SWITCH_OFFSET=%.6f set" % (self.switch_offset))
+        else:
+            gcmd.respond_info("The SWITCH_OFFSET can not be negative")
+       
+
     def _get_xy(self, name, optional=False):
         if optional and self.config.get(name, None) is None:
             return None
