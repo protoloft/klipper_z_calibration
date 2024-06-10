@@ -106,23 +106,41 @@ class ZCalibrationHelper:
         if probe is None:
             raise self.printer.config_error("A probe is needed for %s"
                                             % (self.config.get_name()))
-        if self.samples is None:
-            self.samples = probe.sample_count
-        if self.tolerance is None:
-            self.tolerance = probe.samples_tolerance
-        if self.retries is None:
-            self.retries = probe.samples_retries
-        if self.lift_speed is None:
-            self.lift_speed = probe.lift_speed
+        # TODO remove
+        # deprecated since 2024-06-10
+        if hasattr(probe, 'sample_count'):
+            if self.samples is None:
+                self.samples = probe.sample_count
+            if self.tolerance is None:
+                self.tolerance = probe.samples_tolerance
+            if self.retries is None:
+                self.retries = probe.samples_retries
+            if self.lift_speed is None:
+                self.lift_speed = probe.lift_speed
+            if self.samples_result is None:
+                self.samples_result = probe.samples_result
+            if self.safe_z_height is None:
+                self.safe_z_height = probe.z_offset * 2
+        else:
+            probe_params = probe.get_probe_params()
+            if self.samples is None:
+                self.samples = probe_params['samples']
+            if self.tolerance is None:
+                self.tolerance = probe_params['samples_tolerance']
+            if self.retries is None:
+                self.retries = probe_params['samples_tolerance_retries']
+            if self.lift_speed is None:
+                self.lift_speed = probe_params['lift_speed']
+            if self.samples_result is None:
+                self.samples_result = probe_params['samples_result']
+            if self.safe_z_height is None:
+                self.safe_z_height = probe.get_offsets()[2] * 2
+        # TODO remove
         # clearance is deprecated
         if self.clearance is not None and self.clearance == 0:
             self.clearance = 20 # defaults to 20mm
-        if self.safe_z_height is None:
-            self.safe_z_height = probe.z_offset * 2
         if self.safe_z_height < 3:
             self.safe_z_height = 20 # defaults to 20mm
-        if self.samples_result is None:
-            self.samples_result = probe.samples_result
     def handle_home_rails_end(self, homing_state, rails):
         # get z homing position
         for rail in rails:
@@ -172,6 +190,7 @@ class ZCalibrationHelper:
                     and mesh.bmc.zero_ref_pos is not None):
                     self.bed_site = mesh.bmc.zero_ref_pos
                 else:
+                    # TODO: remove
                     # trying to read the deprecated rri
                     rri = mesh.bmc.relative_reference_index    
                     self.bed_site = mesh.bmc.points[rri]
@@ -318,7 +337,7 @@ class ZCalibrationHelper:
         # even number of samples
         return self._calc_mean(z_sorted[middle-1:middle+1])
     def _log_config(self):
-        logging.debug("Z-CALIBRATION: switch_offset=%.3f,"
+        logging.info("Z-CALIBRATION: switch_offset=%.3f,"
                       " offset_margins=%.3f,%.3f, speed=%.3f,"
                       " samples=%i, tolerance=%.3f, retries=%i,"
                       " samples_result=%s, lift_speed=%.3f,"
@@ -393,6 +412,10 @@ class CalibrationState:
             z_positions = [p[2] for p in positions]
             if max(z_positions) - min(z_positions) > self.helper.tolerance:
                 if retries >= self.helper.retries:
+                    try:
+                        self._multi_probe_end()
+                    except:
+                        logging.exception("Multi-probe end")
                     self.helper.end_gcode.run_gcode_from_command()
                     raise self.gcmd.error("Probe samples exceed tolerance")
                 self.gcmd.respond_info("Probe samples exceed tolerance."
@@ -403,6 +426,13 @@ class CalibrationState:
         if self.helper.samples_result == 'median':
             return self.helper._calc_median(positions)[2]
         return self.helper._calc_mean(positions)[2]
+    def _multi_probe_end(self):
+        # TODO remove
+        # deprecated since 2024-06-10
+        if hasattr(self.probe, 'multi_probe_end'):
+            self.probe.multi_probe_end()
+        else:
+            self.probe.probe_session.end_probe_session()
     def _add_probe_offset(self, site):
         # calculate bed position by using the probe's offsets
         probe_offsets = self.probe.get_offsets()
@@ -423,6 +453,13 @@ class CalibrationState:
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
     def calibrate_z(self):
         self.helper.start_gcode.run_gcode_from_command()
+        # start probe session
+        # TODO remove
+        # deprecated since 2024-06-10
+        if hasattr(self.probe, 'multi_probe_begin'):
+            self.probe.multi_probe_begin()
+        else:
+            self.probe.probe_session.start_probe_session(None)
         # probe the nozzle
         nozzle_zero = self._probe_on_site(self.z_endstop,
                                           self.helper.nozzle_site,
@@ -432,7 +469,6 @@ class CalibrationState:
         # probe the probe-switch
         self.helper.switch_gcode.run_gcode_from_command()
         # probe the body of the switch
-        self.probe.multi_probe_begin()
         switch_zero = self._probe_on_site(self.z_endstop,
                                           self.helper.switch_site,
                                           check_probe=True)
@@ -441,7 +477,8 @@ class CalibrationState:
         probe_zero = self._probe_on_site(self.probe.mcu_probe,
                                          probe_site,
                                          check_probe=True)
-        self.probe.multi_probe_end()
+        # end probe session
+        self._multi_probe_end()
         # calculate the offset
         offset = probe_zero - (switch_zero - nozzle_zero
                                + self.helper.switch_offset)
