@@ -149,12 +149,9 @@ class ZCalibrationHelper:
         self.last_state = False
         if self.z_homing is None:
             raise gcmd.error("Must home axes first")
-        nozzle_site = self._get_nozzle_site(gcmd,
-                                            gcmd.get("NOZZLE_POSITION", None))
-        switch_site = self._get_switch_site(gcmd,
-                                            nozzle_site,
-                                            gcmd.get("SWITCH_POSITION", None))
-        bed_site = self._get_bed_site(gcmd, gcmd.get("BED_POSITION", None))
+        nozzle_site = self._get_nozzle_site(gcmd)
+        switch_site = self._get_switch_site(gcmd, nozzle_site)
+        bed_site = self._get_bed_site(gcmd)
         self._log_params(nozzle_site, switch_site, bed_site)
         state = CalibrationState(self, gcmd)
         state.calibrate_z(nozzle_site, switch_site, bed_site)
@@ -168,8 +165,7 @@ class ZCalibrationHelper:
         sample_count = gcmd.get_int("SAMPLES", self.samples, minval=1)
         sample_retract_dist = gcmd.get_float("SAMPLE_RETRACT_DIST",
                                              self.retract_dist, above=0.)
-        nozzle_site = self._get_nozzle_site(gcmd,
-                                            gcmd.get("NOZZLE_POSITION", None))
+        nozzle_site = self._get_nozzle_site(gcmd)
         toolhead = self.printer.lookup_object('toolhead')
         pos = toolhead.get_position()
         self._move_safe_z(pos, lift_speed)
@@ -224,12 +220,13 @@ class ZCalibrationHelper:
             gcmd.respond_info("The resulting switch offset is negative! Either"
                               " the nozzle is still too far away or something"
                               " else is wrong...")
-    def _get_nozzle_site(self, gcmd, nozzle_attr=None):
+    def _get_nozzle_site(self, gcmd):
         nozzle_site = None
+        nozzle_param = gcmd.get("NOZZLE_POSITION", "")
         safe_z_home = self.printer.lookup_object('safe_z_home', default=None)
         # from NOZZLE_POSITION parameter
-        if nozzle_attr is not None:
-            nozzle_site = self._parse_xy("NOZZLE_POSITION", nozzle_attr)
+        if nozzle_param:
+            nozzle_site = self._parse_xy("NOZZLE_POSITION", nozzle_param, gcmd)
         # from configuration
         elif self.config.get("nozzle_xy_position", None) is not None:
             nozzle_site = self._get_xy("nozzle_xy_position")
@@ -238,18 +235,19 @@ class ZCalibrationHelper:
             nozzle_site = [safe_z_home.home_x_pos,
                            safe_z_home.home_y_pos,
                            None]
-        else:
+        if nozzle_site is None:
             raise gcmd.error("Cannot find a nozzle position! Either configure"
                              " the nozzle_xy_position for %s, the"
                              " [safe_z_home], or use the NOZZLE_POSITION"
                              " parameter for CALIBRATE_Z."
                              % (self.config.get_name()))
         return nozzle_site
-    def _get_switch_site(self, gcmd, nozzle_site, switch_attr=None):
+    def _get_switch_site(self, gcmd, nozzle_site):
         switch_site = None
+        switch_param = gcmd.get("SWITCH_POSITION", "")
         # from SWITCH_POSITION parameter
-        if switch_attr is not None:
-            switch_site = self._parse_xy("SWITCH_POSITION", switch_attr)
+        if switch_param:
+            switch_site = self._parse_xy("SWITCH_POSITION", switch_param, gcmd)
         # from configuration
         elif self.config.get("switch_xy_position", None) is not None:
             switch_site = self._get_xy("switch_xy_position")
@@ -258,18 +256,19 @@ class ZCalibrationHelper:
             switch_site = [nozzle_site[0] + self.switch_xy_offsets[0],
                            nozzle_site[1] + self.switch_xy_offsets[1],
                            None]
-        else:
+        if switch_site is None:
             raise gcmd.error("Cannot find a switch position! Either configure"
                              " the switch_xy_position or the switch_xy_offsets"
                              " for %s or use the SWITCH_POSITION parameter for"
                              " CALIBRATE_Z." % (self.config.get_name()))
         return switch_site
-    def _get_bed_site(self, gcmd, bed_attr=None):
+    def _get_bed_site(self, gcmd):
         bed_site = None
+        bed_param = gcmd.get("BED_POSITION", "")
         mesh = self.printer.lookup_object('bed_mesh', default=None)
         # from BED_POSITION parameter
-        if bed_attr is not None:
-            bed_site = self._parse_xy("BED_POSITION", bed_attr)
+        if bed_param:
+            bed_site = self._parse_xy("BED_POSITION", bed_param, gcmd)
         # from configuration
         elif self.config.get("bed_xy_position", None) is not None:
             bed_site = self._get_xy("bed_xy_position")
@@ -278,7 +277,8 @@ class ZCalibrationHelper:
             if (hasattr(mesh.bmc, 'zero_ref_pos')
                 and mesh.bmc.zero_ref_pos is not None):
                 bed_site = mesh.bmc.zero_ref_pos
-            elif mesh.bmc.relative_reference_index is not None:
+            elif (hasattr(mesh.bmc, 'relative_reference_index')
+                  and mesh.bmc.relative_reference_index is not None):
                 # TODO: remove: trying to read the deprecated rri
                 rri = mesh.bmc.relative_reference_index
                 bed_site = mesh.bmc.points[rri]
@@ -294,13 +294,16 @@ class ZCalibrationHelper:
             return None
         else:
             return self._parse_xy(name, self.config.get(name))
-    def _parse_xy(self, name, site):
+    def _parse_xy(self, name, site, gcmd=None):
         try:
             x_pos, y_pos = site.split(',')
             return [float(x_pos), float(y_pos), None]
         except:
-            raise self.config.error("Unable to parse %s in %s"
-                                    % (name, self.config.get_name()))
+            if gcmd is not None:
+                raise gcmd.error("Unable to parse %s" % (name))
+            else:
+                raise self.config.error("Unable to parse %s in %s"
+                                        % (name, self.config.get_name()))
     def _get_offset_margins(self, name, default):
         try:
             margins = self.config.get(name, default).split(',')
