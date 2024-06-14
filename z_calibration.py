@@ -415,6 +415,10 @@ class CalibrationState:
             # check if probe is attached and switch is closed
             time = self.toolhead.get_last_move_time()
             if self.probe.mcu_probe.query_endstop(time):
+                try:
+                    self._multi_probe_end()
+                except:
+                    logging.exception("Multi-probe end")
                 raise self.helper.printer.command_error("Probe switch not"
                                                         " closed - Probe not"
                                                         " attached?")
@@ -474,26 +478,27 @@ class CalibrationState:
                                                       {'Z_ADJUST': offset})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
     def calibrate_z(self, nozzle_site, switch_site, bed_site):
+        # execute start gcode
         self.helper.start_gcode.run_gcode_from_command()
-        # start probe session
-        # TODO: remove: deprecated since 2024-06-10
-        if hasattr(self.probe, 'multi_probe_begin'):
-            self.probe.multi_probe_begin()
-        else:
-            self.probe.probe_session.start_probe_session(None)
         # probe the nozzle
         nozzle_zero = self._probe_on_site(self.z_endstop,
                                           nozzle_site,
                                           check_probe=False,
                                           split_xy=True,
                                           wiggle=True)
-        # probe the probe-switch
+        # execute switch gcode
         self.helper.switch_gcode.run_gcode_from_command()
-        # probe the body of the switch
+        # start probe session
+        # TODO: remove: deprecated since 2024-06-10
+        if hasattr(self.probe, 'multi_probe_begin'):
+            self.probe.multi_probe_begin()
+        else:
+            self.probe.probe_session.start_probe_session(None)
+        # probe switch body
         switch_zero = self._probe_on_site(self.z_endstop,
                                           switch_site,
                                           check_probe=True)
-        # probe position on bed
+        # probe bed position
         probe_site = self._add_probe_offset(bed_site)
         probe_zero = self._probe_on_site(self.probe.mcu_probe,
                                          probe_site,
@@ -537,6 +542,7 @@ class CalibrationState:
         # set states
         self.helper.last_state = True
         self.helper.last_z_offset = offset
+        # execute end gcode
         self.helper.end_gcode.run_gcode_from_command()
 def load_config(config):
     return ZCalibrationHelper(config)
