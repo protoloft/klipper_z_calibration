@@ -262,6 +262,9 @@ class ZCalibrationHelper:
             if (hasattr(mesh.bmc, 'zero_ref_pos')
                 and mesh.bmc.zero_ref_pos is not None):
                 return mesh.bmc.zero_ref_pos
+            elif (hasattr(mesh.bmc, 'probe_mgr')
+                and mesh.bmc.probe_mgr.zero_ref_pos is not None):
+                return mesh.bmc.probe_mgr.zero_ref_pos
             elif (hasattr(mesh.bmc, 'relative_reference_index')
                   and mesh.bmc.relative_reference_index is not None):
                 # TODO: remove: trying to read the deprecated rri
