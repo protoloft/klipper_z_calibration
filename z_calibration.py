@@ -516,9 +516,9 @@ class CalibrationState:
             if abs(offset) > 0.2:
                 pos_z_estop = self.helper.position_z_endstop
                 new_pos_z_estop = pos_z_estop - offset
-                self.gcmd.respond_info("%s: current z position_endstop=%.3f -"
-                                       " new offset=%.6f --> possible"
-                                       " suggestion: new z"
+                self.gcmd.respond_info("%s: current z axis position_endstop="
+                                       "%.3f - new offset=%.6f --> POSSIBLE"
+                                       " SUGGESTION: new z axis"
                                        " position_endstop=%.3f"
                                        % (self.gcmd.get_command(),
                                           pos_z_estop, offset,
