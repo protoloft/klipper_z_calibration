@@ -259,12 +259,13 @@ class ZCalibrationHelper:
             return self.bed_site
         # from mesh's zero reference position
         if mesh is not None:
-            if (hasattr(mesh.bmc, 'zero_ref_pos')
-                and mesh.bmc.zero_ref_pos is not None):
-                return mesh.bmc.zero_ref_pos
-            elif (hasattr(mesh.bmc, 'probe_mgr')
+            if (hasattr(mesh.bmc, 'probe_mgr')
                 and mesh.bmc.probe_mgr.zero_ref_pos is not None):
                 return mesh.bmc.probe_mgr.zero_ref_pos
+            elif (hasattr(mesh.bmc, 'zero_ref_pos')
+                and mesh.bmc.zero_ref_pos is not None):
+                # TODO: remove - deprecated since 2024-06
+                return mesh.bmc.zero_ref_pos
             elif (hasattr(mesh.bmc, 'relative_reference_index')
                   and mesh.bmc.relative_reference_index is not None):
                 # TODO: remove: trying to read the deprecated rri
