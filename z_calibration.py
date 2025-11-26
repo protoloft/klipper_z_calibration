@@ -52,6 +52,7 @@ class ZCalibrationHelper:
         self.switch_gcode = gcode_macro.load_template(config,
                                                       'before_switch_gcode',
                                                       '')
+        self.error_gcode = gcode_macro.load_template(config, 'error_gcode', '')
         self.end_gcode = gcode_macro.load_template(config, 'end_gcode', '')
         self.query_endstops = self.printer.load_object(config,
                                                        'query_endstops')
@@ -542,11 +543,13 @@ class CalibrationState:
                                       % (self.gcmd.get_command(), offset,
                                          self.offset_margins[0],
                                          self.offset_margins[1]))
-            # set new offset
-            self._set_new_gcode_offset(offset)
-            # set states
-            self.helper.last_state = True
-            self.helper.last_z_offset = offset
+        except Exception:
+            self.helper.last_state = False
+            try:
+               self.helper.error_gcode.run_gcode_from_command()
+            except Exception:
+               logging.exception("Error gcode failed")
+            raise
         finally:
             # execute end gcode
             self.helper.end_gcode.run_gcode_from_command()
