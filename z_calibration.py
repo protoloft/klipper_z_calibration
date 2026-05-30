@@ -494,9 +494,10 @@ class CalibrationState:
                                                   check_probe=True)
                 # probe bed position
                 probe_site = self._add_probe_offset(bed_site)
-                # Klipper's probe refactor (mid-2025) nests the real MCU
-                # endstop inside ProbeEndstopWrapper, which itself no longer
-                # exposes get_steppers/home_start/etc. Unwrap when needed.
+                # TODO: remove: deprecated since 2026-05-25
+                # Klipper's probe refactor nests the real MCU endstop inside
+                # ProbeEndstopWrapper, which itself no longer exposes
+                # get_steppers/home_start/etc. Unwrap when needed.
                 probe_endstop = self.probe.mcu_probe
                 if not hasattr(probe_endstop, 'get_steppers'):
                     probe_endstop = probe_endstop.mcu_endstop
