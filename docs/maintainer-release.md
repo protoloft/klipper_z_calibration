@@ -31,7 +31,9 @@ release.
 
 Moonraker supports `stable`, `beta`, and `dev` channels for `git_repo`
 extensions. If `channel` is omitted, Moonraker treats the extension as `dev`.
-This project should guide normal users to `stable`.
+This project should guide normal users to `stable`. Existing no-channel
+installs are not migrated by normal Moonraker updates, because Moonraker does
+not run `install.sh` during a `git_repo` update.
 
 ## Moonraker Channel Policy
 
@@ -48,14 +50,16 @@ managed_services: klipper
 
 Existing updater sections should be handled as follows:
 
-1. If `[update_manager z_calibration]` has no `channel`, migrate it to
-   `channel: stable`.
+1. If `[update_manager z_calibration]` has no `channel`, the installer should
+   migrate it to `channel: stable` when the installer is rerun.
 2. If the section already has `channel: stable`, leave it unchanged.
 3. If the section already has `channel: beta`, leave it unchanged.
 4. If the section already has `channel: dev`, leave it unchanged.
 
 This preserves explicit user intent while moving old implicit `dev` users to
-the safer stable release stream.
+the safer stable release stream when they rerun the installer or edit
+`moonraker.conf`. Release notes alone are not a reliable migration mechanism,
+because many users update directly through Mainsail or Fluidd.
 
 ## Pre-release Checklist
 
@@ -96,6 +100,7 @@ Run this checklist before creating any beta or stable release.
    - Kalico installs link `z_calibration.py` to `klippy/plugins`
    - `klipper_compat.py` loads from the repository checkout
    - Moonraker updater config uses the agreed channel policy
+   - no-channel Moonraker migration is documented as installer-scoped
    - `managed_services: klipper` is present
    - custom Moonraker paths use `install.sh -m <path>`
 8. Review compatibility notes:
@@ -213,8 +218,10 @@ Use a stable release for production-ready changes.
 9. Include release notes:
    - user-visible changes
    - compatibility changes
-   - Moonraker channel notes
-   - installer migration notes
+   - no-channel Moonraker migration guidance
+   - exact `channel: stable` updater config snippet
+   - Moonraker restart instructions after editing `moonraker.conf`
+   - installer migration notes that explain `install.sh` must be rerun
    - manual verification performed
 10. Publish the GitHub Release manually.
 11. Verify from a stable-channel install that Moonraker detects the release.
@@ -236,13 +243,16 @@ After publishing, verify the release from user-like environments.
    - confirm no new `klipper_compat.py` link is created in `klippy/plugins`
    - confirm `allow_plugin_override` instructions are shown
 3. Existing no-channel Moonraker config:
-   - run installer/update path
-   - confirm the section is migrated to `channel: stable`
-4. Existing explicit-channel Moonraker config:
+   - rerun `install.sh`
+   - confirm the installer migrates the section to `channel: stable`
+4. Existing no-channel Moonraker config through normal Moonraker update:
+   - update through Moonraker without rerunning `install.sh`
+   - confirm the section is not automatically migrated
+5. Existing explicit-channel Moonraker config:
    - confirm `channel: stable` is unchanged
    - confirm `channel: beta` is unchanged
    - confirm `channel: dev` is unchanged
-5. Runtime smoke test:
+6. Runtime smoke test:
    - Klipper starts successfully
    - `[z_calibration]` loads
    - `CALIBRATE_Z` is registered

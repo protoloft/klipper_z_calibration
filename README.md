@@ -100,9 +100,15 @@ The installer manages the `[update_manager z_calibration]` section in
 `moonraker.conf`.
 
 - New installations use `channel: stable`.
-- Existing sections without a `channel` are migrated to `channel: stable`.
+- Existing sections without a `channel` are migrated to `channel: stable`
+  when the installer is rerun.
 - Existing explicit `stable`, `beta`, or `dev` channels are left unchanged.
 - `managed_services: klipper` is configured so updates restart Klipper.
+
+Moonraker updates do not run `install.sh`. Existing installs with no
+`channel` continue to use Moonraker's implicit `dev` channel until the user
+reruns `install.sh` or manually adds `channel: stable` to the updater
+section.
 
 Moonraker's modern default config path is
 `~/printer_data/config/moonraker.conf`. Use `install.sh -m <path>` for custom
