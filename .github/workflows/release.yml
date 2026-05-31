@@ -1,0 +1,86 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to draft, for example v1.2.0"
+        required: true
+        type: string
+      channel:
+        description: "Expected release channel"
+        required: true
+        default: "stable"
+        type: choice
+        options:
+          - stable
+          - beta
+
+permissions:
+  contents: write
+
+jobs:
+  draft-release:
+    name: Draft release
+    runs-on: ubuntu-latest
+    environment: release
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || '' }}
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Validate release tag
+        id: release
+        run: |
+          args=(--tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT")
+          if [ -n "$RELEASE_CHANNEL" ]; then
+              args+=(--channel "$RELEASE_CHANNEL")
+          fi
+          python scripts/check_release.py "${args[@]}"
+
+      - name: Run local validation
+        run: python scripts/check_all.py
+
+      - name: Build source archive
+        run: |
+          mkdir -p dist
+          archive="dist/klipper_z_calibration-${{ steps.release.outputs.version }}.tar.gz"
+          git archive \
+              --format=tar.gz \
+              --prefix="klipper_z_calibration-${{ steps.release.outputs.version }}/" \
+              --output="$archive" \
+              HEAD
+
+      - name: Create draft GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.release.outputs.prerelease }}
+          TITLE: ${{ steps.release.outputs.title }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          args=(
+              release create "$TAG"
+              dist/*.tar.gz
+              --draft
+              --verify-tag
+              --title "$TITLE"
+              --generate-notes
+          )
+          if [ "$PRERELEASE" = "true" ]; then
+              args+=(--prerelease)
+          fi
+          gh "${args[@]}"
