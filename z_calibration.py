@@ -498,9 +498,28 @@ class CalibrationState:
                 # Klipper's probe refactor nests the real MCU endstop inside
                 # ProbeEndstopWrapper, which itself no longer exposes
                 # get_steppers/home_start/etc. Unwrap when needed.
-                probe_endstop = self.probe.mcu_probe
-                if not hasattr(probe_endstop, 'get_steppers'):
+                probe_endstop = None
+                # 方法1：从 probe_session 获取
+                if hasattr(self.probe, 'probe_session'):
+                    ps = self.probe.probe_session
+                    if hasattr(ps, 'mcu_endstop'):
+                        probe_endstop = ps.mcu_endstop
+                    elif hasattr(ps, 'hw_probe_session') and hasattr(ps.hw_probe_session, 'mcu_endstop'):
+                        probe_endstop = ps.hw_probe_session.mcu_endstop
+                # 方法2：如果 probe 本身有 mcu_probe 且不为 None
+                if probe_endstop is None and hasattr(self.probe, 'mcu_probe') and self.probe.mcu_probe is not None:
+                    probe_endstop = self.probe.mcu_probe
+                # 方法3：直接使用 probe 对象（如果它实现了 get_steppers）
+                if probe_endstop is None and hasattr(self.probe, 'get_steppers'):
+                    probe_endstop = self.probe
+                # 如果还是 None，报错
+                if probe_endstop is None:
+                    raise self.gcmd.error("Cannot find probe endstop object. Please report this issue.")
+                
+                # 确保 probe_endstop 具有 get_steppers 方法（解包可能的包装）
+                if not hasattr(probe_endstop, 'get_steppers') and hasattr(probe_endstop, 'mcu_endstop'):
                     probe_endstop = probe_endstop.mcu_endstop
+                
                 probe_zero = self._probe_on_site(probe_endstop,
                                                  probe_site,
                                                  check_probe=True)
