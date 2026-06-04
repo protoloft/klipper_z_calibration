@@ -120,6 +120,9 @@ Use the Wiki for the full configuration reference:
 
 https://github.com/protoloft/klipper_z_calibration/wiki
 
+The smaller the configured `switch_offset`, the farther the nozzle is from the
+bed.
+
 Current releases expect the modern option names:
 
 - `offset_margins`
@@ -128,9 +131,6 @@ Current releases expect the modern option names:
 - `error_gcode`
 
 The older `max_deviation` and `clearance` options are no longer supported.
-
-The smaller the configured `switch_offset`, the farther the nozzle is from the
-bed.
 
 `offset_gcode` is an optional hook for toolchanger systems that need to apply
 the calculated Z adjustment through custom G-Code.
