@@ -14,9 +14,12 @@ class ZCalibrationHelper:
         self.last_state = False
         self.last_z_offset = 0.
         self.position_z_endstop = None
+        self.adjusted_z_endstop = 0.
         self.config = config
         self.printer = config.get_printer()
         self.switch_offset = config.getfloat('switch_offset', None, above=0.)
+        self.kinematic_offset = config.getboolean('kinematic_offset', False)
+        self.endstop_z_offset = config.getfloat('endstop_z_offset', 0.)
         # TODO: remove: max_deviation is deprecated
         self.max_deviation = config.getfloat('max_deviation', None, above=0.)
         config.deprecate('max_deviation')
@@ -55,6 +58,9 @@ class ZCalibrationHelper:
         self.end_gcode = gcode_macro.load_template(config, 'end_gcode', '')
         self.query_endstops = self.printer.load_object(config,
                                                        'query_endstops')
+        if self.kinematic_offset:
+            stepper_z_config = config.getsection('stepper_z')
+            self.config_position_endstop = stepper_z_config.getfloat('position_endstop')
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
         self.printer.register_event_handler("homing:home_rails_end",
@@ -70,7 +76,9 @@ class ZCalibrationHelper:
                                     desc=self.cmd_CALCULATE_SWITCH_OFFSET_help)
     def get_status(self, eventtime):
         return {'last_query': self.last_state,
-                'last_z_offset': self.last_z_offset}
+                'last_z_offset': self.last_z_offset,
+                'adjusted_z_endstop': self.adjusted_z_endstop + self.endstop_z_offset,
+                }
     def handle_connect(self):
         # get endstop
         for endstop, name in self.query_endstops.endstops:
@@ -137,6 +145,22 @@ class ZCalibrationHelper:
                 if self.position_min is None:
                     self.position_min = rail.position_min
                 self.position_z_endstop = rail.position_endstop
+                if self.kinematic_offset:
+                    stepper_name = rail.get_steppers()[0].get_name()
+                    adjustment = self.adjusted_z_endstop - rail.position_endstop
+                    homing_state.set_stepper_adjustment(stepper_name, adjustment)
+                    self._update_z_limits(adjustment, rail)
+    def _update_z_limits(self, adjustment, rail=None):
+        toolhead = self.printer.lookup_object('toolhead')
+        kin = toolhead.get_kinematics()
+        if rail is not None:
+            new_min = rail.position_min + adjustment
+            new_max = rail.position_max + adjustment
+        else:
+            new_min = kin.axes_min[2] + adjustment
+            new_max = kin.axes_max[2] + adjustment
+        kin.axes_min = kin.axes_min._replace(z=new_min)
+        kin.axes_max = kin.axes_max._replace(z=new_max)
     def _build_config(self):
         pass
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzle offset"
@@ -205,6 +229,8 @@ class ZCalibrationHelper:
     cmd_CALCULATE_SWITCH_OFFSET_help = ("Calculates a switch_offset based on"
                                         " the current z position")
     def cmd_CALCULATE_SWITCH_OFFSET(self, gcmd):
+        if self.kinematic_offset:
+            raise gcmd.error("when kinematic_offset is enabled, CALCULATE_SWITCH_OFFSET is not supported")
         if self.last_z_offset is None:
             raise gcmd.error("%s: must run CALIBRATE_Z first"
                              % (gcmd.get_command()))
@@ -284,16 +310,19 @@ class ZCalibrationHelper:
                          " parameter."
                          % (gcmd.get_command(), self.config.get_name()))
     def _get_switch_offset(self, gcmd):
-        # from SWITCH_OFFSET parameter
-        if gcmd.get("SWITCH_OFFSET", ""):
-            return gcmd.get_float("SWITCH_OFFSET", None, above=0.)
-        # from configuration
-        if self.switch_offset is not None:
-            return self.switch_offset
-        raise gcmd.error("%s: cannot find a switch offset! Either configure"
-                         " the switch_offset for %s, or use the SWITCH_OFFSET"
-                         " parameter."
-                         % (gcmd.get_command(), self.config.get_name()))
+        if self.kinematic_offset:
+            return self.config_position_endstop
+        else:
+            # from SWITCH_OFFSET parameter
+            if gcmd.get("SWITCH_OFFSET", ""):
+                return gcmd.get_float("SWITCH_OFFSET", None, above=0.)
+            # from configuration
+            if self.switch_offset is not None:
+                return self.switch_offset
+            raise gcmd.error("%s: cannot find a switch offset! Either configure"
+                             " the switch_offset for %s, or use the SWITCH_OFFSET"
+                             " parameter."
+                             % (gcmd.get_command(), self.config.get_name()))
     def _get_xy(self, name, optional=False):
         if optional and self.config.get(name, None) is None:
             return None
@@ -369,7 +398,8 @@ class ZCalibrationHelper:
         return self._calc_mean(z_sorted[middle-1:middle+1])
     def _log_params(self, gcmd, switch_offset, nozzle_site, switch_site,
                     bed_site):
-        logging.info("%s: switch_offset=%.3f, offset_margins=%.3f,%.3f,"
+        logging.info("%s: switch_offset=%.3f, kinematic_offset=%s,"
+                     " offset_margins=%.3f,%.3f,"
                      " speed=%.3f, samples=%i, tolerance=%.3f, retries=%i,"
                      " samples_result=%s, lift_speed=%.3f, safe_z_height=%.3f,"
                      " probing_speed=%.3f, second_speed=%.3f,"
@@ -377,7 +407,7 @@ class ZCalibrationHelper:
                      " probe_nozzle_x=%.3f, probe_nozzle_y=%.3f,"
                      " probe_switch_x=%.3f, probe_switch_y=%.3f,"
                      " probe_bed_x=%.3f, probe_bed_y=%.3f"
-                     % (gcmd.get_command(), switch_offset,
+                     % (gcmd.get_command(), switch_offset, self.kinematic_offset,
                         self.offset_margins[0], self.offset_margins[1],
                         self.speed, self.samples, self.tolerance,
                         self.retries, self.samples_result, self.lift_speed,
@@ -459,16 +489,23 @@ class CalibrationState:
         probe_site[1] -= probe_offsets[1]
         return probe_site
     def _set_new_gcode_offset(self, offset):
-        # reset gcode z offset to 0
-        gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
-                                                      "SET_GCODE_OFFSET",
-                                                      {'Z': 0.0})
-        self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
-        # set new gcode z offset
-        gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
-                                                      "SET_GCODE_OFFSET",
-                                                      {'Z_ADJUST': offset})
-        self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
+        if self.helper.kinematic_offset:
+            # apply offset to kinematic position
+            pos = self.toolhead.get_position()
+            self.gcode.run_script_from_command(
+                "SET_KINEMATIC_POSITION SET_HOMED= Z=%.6f" % (pos[2] - offset,))
+            self.helper._update_z_limits(-offset)
+        else:
+            # reset gcode z offset to 0
+            gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
+                                                          "SET_GCODE_OFFSET",
+                                                          {'Z': 0.0})
+            self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
+            # set new gcode z offset
+            gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
+                                                          "SET_GCODE_OFFSET",
+                                                          {'Z_ADJUST': offset})
+            self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
     def calibrate_z(self, switch_offset, nozzle_site, switch_site, bed_site):
         # execute start gcode
         self.helper.start_gcode.run_gcode_from_command()
@@ -554,6 +591,7 @@ class CalibrationState:
             # set states
             self.helper.last_state = True
             self.helper.last_z_offset = offset
+            self.helper.adjusted_z_endstop -= offset
         finally:
             # execute end gcode
             self.helper.end_gcode.run_gcode_from_command()
