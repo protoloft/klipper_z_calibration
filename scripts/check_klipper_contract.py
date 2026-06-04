@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # Validate Klipper source contracts used by z_calibration.
 #
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import argparse
 import ast
@@ -9,6 +11,8 @@ import sys
 
 
 class ContractError(Exception):
+    """Raised when an expected upstream source file cannot be inspected."""
+
     pass
 
 
@@ -16,13 +20,16 @@ PROFILE_VALIDATORS = []
 
 
 def probe_profile(name):
+    """Register a supported probe compatibility profile validator."""
     def register(func):
+        """Store the decorated profile validator."""
         PROFILE_VALIDATORS.append((name, func))
         return func
     return register
 
 
 def read_source(root, relpath):
+    """Read and parse a Klipper source file."""
     path = pathlib.Path(root) / relpath
     if not path.is_file():
         raise ContractError("missing %s" % (relpath,))
@@ -31,6 +38,7 @@ def read_source(root, relpath):
 
 
 def read_existing_sources(root, relpaths):
+    """Read every existing source from a fallback path list."""
     sources = []
     for relpath in relpaths:
         try:
@@ -43,6 +51,7 @@ def read_existing_sources(root, relpaths):
 
 
 def any_has_probe_result(sources):
+    """Return whether any parsed source defines ProbeResult."""
     for _source, tree in sources:
         if has_class(tree, 'ProbeResult') or has_assignment(tree,
                                                            'ProbeResult'):
@@ -51,16 +60,19 @@ def any_has_probe_result(sources):
 
 
 def has_class(tree, class_name):
+    """Return whether an AST contains a class definition."""
     return any(isinstance(node, ast.ClassDef) and node.name == class_name
                for node in ast.walk(tree))
 
 
 def has_function(tree, function_name):
+    """Return whether an AST contains a function definition."""
     return any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                and node.name == function_name for node in ast.walk(tree))
 
 
 def class_has_function(tree, class_name, function_name):
+    """Return whether a class defines a specific method."""
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef) or node.name != class_name:
             continue
@@ -70,6 +82,7 @@ def class_has_function(tree, class_name, function_name):
 
 
 def has_assignment(tree, target_name):
+    """Return whether an AST assigns to a top-level-style name."""
     for node in ast.walk(tree):
         if isinstance(node, ast.Assign):
             targets = node.targets
@@ -84,15 +97,21 @@ def has_assignment(tree, target_name):
 
 
 def require(condition, message, errors):
+    """Append a contract error message when a condition is false."""
     if not condition:
         errors.append(message)
 
 
 def format_errors(errors):
+    """Prefix raw contract errors for CLI output."""
     return ["Klipper contract failed: %s" % (error,) for error in errors]
 
 
 def validate_probe_session(root, errors):
+    """Validate source markers for modern probe sessions."""
+    # This source-level check can prove that a session API exists, but it
+    # cannot prove the runtime object returned by start_probe_session().
+    # Behavior of the returned session stays covered by wrapper/unit tests.
     _source, tree = read_source(root, 'klippy/extras/probe.py')
     require(class_has_function(tree, 'PrinterProbe', 'start_probe_session'),
             'PrinterProbe.start_probe_session not found', errors)
@@ -105,6 +124,10 @@ def validate_probe_session(root, errors):
 
 
 def validate_probe_result(root, errors):
+    """Validate source markers for raw test-position probe results."""
+    # ProbeResult may move between probe/manual_probe sources. This check
+    # guards the coordinate contract, but runtime still accepts tuple/list
+    # results for older profiles.
     sources = read_existing_sources(root, [
         'klippy/extras/manual_probe.py',
         'klippy/extras/probe.py',
@@ -116,6 +139,14 @@ def validate_probe_result(root, errors):
 
 
 def validate_probe_endstop_wrapper(root, errors):
+    """Validate source markers for legacy probe endstop wrappers."""
+    # This covers the legacy downstream contract where the plugin passes a
+    # probe endstop object into homing.probing_move(). A wrapper exposing only
+    # query_endstop() is not enough; probing_move needs the MCU endstop surface.
+    #
+    # Weak point: source markers cannot prove which concrete object is stored
+    # in probe.mcu_probe at runtime, or whether the usable MCU endstop is nested
+    # as probe.mcu_probe.mcu_endstop. The runtime validator covers that shape.
     source, tree = read_source(root, 'klippy/extras/probe.py')
     require(has_class(tree, 'ProbeEndstopWrapper'),
             'ProbeEndstopWrapper not found', errors)
@@ -128,17 +159,24 @@ def validate_probe_endstop_wrapper(root, errors):
 
 @probe_profile('modern_probe_result_session')
 def validate_modern_probe_result_session(root, errors):
+    """Validate the modern ProbeResult session profile."""
     validate_probe_session(root, errors)
     validate_probe_result(root, errors)
 
 
 @probe_profile('probe_session_xyz_list')
 def validate_probe_session_xyz_list(root, errors):
+    """Validate a session profile that returns XYZ list results."""
     validate_probe_session(root, errors)
 
 
 @probe_profile('legacy_mcu_endstop_probe')
 def validate_legacy_mcu_endstop_probe(root, errors):
+    """Validate the legacy MCU endstop probing profile."""
+    # Keep this profile narrow: it validates the old fallback path only when
+    # the modern probe-session profiles are unavailable. A Klipper version can
+    # pass a modern profile while still changing legacy wrapper internals; that
+    # is acceptable as long as z_calibration uses the modern runtime path.
     source, tree = read_source(root, 'klippy/extras/probe.py')
     require(has_class(tree, 'PrinterProbe'), 'PrinterProbe not found', errors)
     require(class_has_function(tree, 'PrinterProbe', 'multi_probe_begin'),
@@ -161,12 +199,14 @@ def validate_legacy_mcu_endstop_probe(root, errors):
 
 
 def validate_homing(root, errors):
+    """Validate source markers for homing.probing_move."""
     _source, tree = read_source(root, 'klippy/extras/homing.py')
     require(has_function(tree, 'probing_move'),
             'homing.probing_move not found', errors)
 
 
 def validate_bed_mesh(root, errors):
+    """Validate source markers for bed mesh zero-reference lookup."""
     source, _tree = read_source(root, 'klippy/extras/bed_mesh.py')
     markers = [
         'zero_reference_position',
@@ -179,11 +219,13 @@ def validate_bed_mesh(root, errors):
 
 
 def validate_mcu(root, errors):
+    """Validate source markers for MCU_endstop."""
     _source, tree = read_source(root, 'klippy/mcu.py')
     require(has_class(tree, 'MCU_endstop'), 'MCU_endstop not found', errors)
 
 
 def validate_baseline(root):
+    """Validate non-profile contracts required by all supported profiles."""
     errors = []
     try:
         validate_homing(root, errors)
@@ -195,6 +237,7 @@ def validate_baseline(root):
 
 
 def probe_profile_errors(root):
+    """Return matching probe profiles and per-profile failures."""
     profile_errors = []
     matches = []
     for name, validator in PROFILE_VALIDATORS:
@@ -211,6 +254,7 @@ def probe_profile_errors(root):
 
 
 def get_contract_profiles(root):
+    """Return supported profile names for a Klipper checkout."""
     baseline_errors = validate_baseline(root)
     if baseline_errors:
         return []
@@ -219,6 +263,7 @@ def get_contract_profiles(root):
 
 
 def check_klipper_contract(root):
+    """Return formatted contract errors for a Klipper checkout."""
     baseline_errors = validate_baseline(root)
     if baseline_errors:
         return format_errors(baseline_errors)
@@ -232,12 +277,14 @@ def check_klipper_contract(root):
 
 
 def parse_args(argv):
+    """Parse source contract checker arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--klipper-path', required=True)
     return parser.parse_args(argv)
 
 
 def main(argv=None):
+    """CLI entrypoint for source contract validation."""
     args = parse_args(argv or sys.argv[1:])
     errors = check_klipper_contract(args.klipper_path)
     if errors:

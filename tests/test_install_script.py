@@ -1,3 +1,8 @@
+# Unit tests for installer behavior and cleanup.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import os
 import pathlib
 import shlex
@@ -11,10 +16,12 @@ INSTALL_SH = ROOT / 'install.sh'
 
 
 def q(value):
+    """Shell-quote a value for bash snippets."""
     return shlex.quote(str(value))
 
 
 def run_bash(script):
+    """Source install.sh and run a bash snippet in the repo root."""
     command = ". %s\n%s" % (q(INSTALL_SH), script)
     return subprocess.run(
         ['bash', '-c', command],
@@ -25,6 +32,7 @@ def run_bash(script):
 
 
 def make_klipper_tree(tempdir, kalico=False):
+    """Create a minimal fake Klipper/Kalico tree for installer tests."""
     root = pathlib.Path(tempdir) / 'klipper'
     (root / 'klippy' / 'extras').mkdir(parents=True)
     if kalico:
@@ -33,6 +41,8 @@ def make_klipper_tree(tempdir, kalico=False):
 
 
 class InstallScriptTest(unittest.TestCase):
+    """Covers installer link creation and cleanup behavior."""
+
     def test_links_stock_klipper_extra_only(self):
         with tempfile.TemporaryDirectory() as tempdir:
             klipper = make_klipper_tree(tempdir)

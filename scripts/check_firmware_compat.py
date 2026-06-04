@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-# Clone/update firmware repositories and run local compatibility contracts.
+# Clone or update firmware checkouts and run compatibility contracts.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import argparse
@@ -19,6 +21,7 @@ TAG_RE = re.compile(r'refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+)$')
 
 
 def load_contract_checker():
+    """Load the source contract checker from the scripts directory."""
     path = SCRIPT_DIR / 'check_klipper_contract.py'
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
@@ -30,6 +33,7 @@ check_klipper_contract = load_contract_checker()
 
 
 def run(command, cwd=None, capture=False):
+    """Run a subprocess while echoing the command."""
     text = ' '.join([str(item) for item in command])
     sys.stdout.write("+ %s\n" % (text,))
     sys.stdout.flush()
@@ -44,6 +48,7 @@ def run(command, cwd=None, capture=False):
 
 
 def latest_klipper_tag():
+    """Return the newest stable Klipper release tag from the remote."""
     result = run(
         ('git', 'ls-remote', '--tags', '--refs', KLIPPER_URL, 'v*'),
         capture=True)
@@ -58,10 +63,12 @@ def latest_klipper_tag():
 
 
 def version_key(tag):
+    """Return a sortable tuple for a vX.Y.Z tag."""
     return tuple([int(part) for part in tag[1:].split('.')])
 
 
 def clone_or_update(path, url, ref, update=True):
+    """Create or refresh one local firmware checkout."""
     path = pathlib.Path(path)
     if not path.exists():
         if ref is None:
@@ -76,6 +83,7 @@ def clone_or_update(path, url, ref, update=True):
 
 
 def check_contract(name, path):
+    """Run source contract checks for one firmware checkout."""
     sys.stdout.write("Checking %s contract at %s\n" % (name, path))
     errors = check_klipper_contract.check_klipper_contract(path)
     if errors:
@@ -89,6 +97,7 @@ def check_contract(name, path):
 
 
 def get_targets(repo_dir, update=True):
+    """Return firmware targets checked by the compatibility suite."""
     klipper_ref = latest_klipper_tag() if update else None
     return [
         ('klipper-release', KLIPPER_URL, klipper_ref,
@@ -101,6 +110,7 @@ def get_targets(repo_dir, update=True):
 
 
 def run_checks(repo_dir, update=True):
+    """Prepare firmware checkouts and run all contract checks."""
     repo_dir = pathlib.Path(repo_dir)
     repo_dir.mkdir(parents=True, exist_ok=True)
     targets = get_targets(repo_dir, update=update)
@@ -116,6 +126,7 @@ def run_checks(repo_dir, update=True):
 
 
 def parse_args(argv):
+    """Parse firmware compatibility checker arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--repo-dir', default=str(DEFAULT_REPO_DIR),
                         help='directory for local firmware checkouts')
@@ -125,6 +136,7 @@ def parse_args(argv):
 
 
 def main(argv=None):
+    """CLI entrypoint for firmware compatibility checks."""
     args = parse_args(argv or sys.argv[1:])
     try:
         return run_checks(args.repo_dir, update=not args.no_update)

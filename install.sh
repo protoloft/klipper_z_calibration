@@ -1,4 +1,9 @@
 #!/bin/bash
+# Install, update, or uninstall the z_calibration Klipper/Kalico plugin.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 
 SRCDIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )"/ && pwd )"
 KLIPPER_PATH="${HOME}/klipper"

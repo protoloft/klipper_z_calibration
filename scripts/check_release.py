@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # Validate release tags and expose metadata for GitHub Actions.
 #
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import argparse
 import pathlib
@@ -13,10 +15,13 @@ BETA_RE = re.compile(r'^v(?P<version>\d+\.\d+\.\d+-beta\.\d+)$')
 
 
 class ReleaseError(Exception):
+    """Raised when release tag metadata is invalid."""
+
     pass
 
 
 def classify_tag(tag):
+    """Classify a tag as stable or beta release metadata."""
     stable = STABLE_RE.match(tag)
     if stable is not None:
         return {
@@ -40,6 +45,7 @@ def classify_tag(tag):
 
 
 def validate_channel(metadata, expected_channel):
+    """Ensure the tag channel matches an optional expected channel."""
     if expected_channel is None:
         return
     if metadata['channel'] != expected_channel:
@@ -49,6 +55,7 @@ def validate_channel(metadata, expected_channel):
 
 
 def write_outputs(path, metadata):
+    """Append GitHub Actions output values for release metadata."""
     output_path = pathlib.Path(path)
     with output_path.open('a', encoding='utf-8') as output_file:
         for key in ['tag', 'version', 'channel', 'prerelease', 'title']:
@@ -56,6 +63,7 @@ def write_outputs(path, metadata):
 
 
 def parse_args(argv):
+    """Parse release validation arguments."""
     parser = argparse.ArgumentParser()
     parser.add_argument('--tag', required=True)
     parser.add_argument('--channel', choices=['stable', 'beta'])
@@ -64,6 +72,7 @@ def parse_args(argv):
 
 
 def main(argv=None):
+    """CLI entrypoint for release metadata validation."""
     args = parse_args(argv or sys.argv[1:])
     try:
         metadata = classify_tag(args.tag)

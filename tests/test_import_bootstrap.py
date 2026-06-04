@@ -1,3 +1,8 @@
+# Unit tests for symlinked plugin import bootstrapping.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib.util
 import os
 import pathlib
@@ -13,6 +18,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 class ImportBootstrapTest(unittest.TestCase):
+    """Covers helper module loading from a symlinked plugin entrypoint."""
+
     def test_symlinked_main_module_imports_repo_local_compat(self):
         old_path = list(sys.path)
         old_mcu = sys.modules.get('mcu')

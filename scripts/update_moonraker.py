@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # Update Moonraker config for the z_calibration update manager section.
 #
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import pathlib
 import re
@@ -12,6 +14,7 @@ ANY_SECTION_RE = re.compile(r'^\[[^\]]+\]$')
 
 
 def _find_section(lines):
+    """Return the start/end indexes for the z_calibration updater section."""
     start = None
     for index, line in enumerate(lines):
         if SECTION_RE.match(line.strip()):
@@ -28,6 +31,7 @@ def _find_section(lines):
 
 
 def _new_section(repo_path):
+    """Build a default stable Moonraker update_manager section."""
     return [
         "",
         "[update_manager z_calibration]",
@@ -41,6 +45,7 @@ def _new_section(repo_path):
 
 
 def update_config_text(text, repo_path):
+    """Add or migrate the update_manager section in Moonraker config text."""
     lines = text.splitlines()
     start, end = _find_section(lines)
     if start is None:
@@ -66,6 +71,7 @@ def update_config_text(text, repo_path):
 
 
 def update_config_file(path, repo_path):
+    """Update a Moonraker config file and report whether it changed."""
     config_path = pathlib.Path(path)
     original = config_path.read_text(encoding='utf-8')
     updated, changed = update_config_text(original, repo_path)
@@ -75,6 +81,7 @@ def update_config_file(path, repo_path):
 
 
 def main():
+    """CLI entrypoint for Moonraker config migration."""
     if len(sys.argv) != 3:
         sys.stderr.write("Usage: update_moonraker.py <config> <repo-path>\n")
         return 2

@@ -1,3 +1,8 @@
+# Unit tests for z_calibration command behavior and calibration flow.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib
 import sys
 import types
@@ -16,6 +21,7 @@ z_calibration = importlib.import_module('z_calibration')
 
 
 def make_helper(values=None, probe=None):
+    """Create a connected helper with Z rail settings initialized."""
     printer = FakePrinter(probe)
     config = FakeConfig(printer, values)
     helper = z_calibration.ZCalibrationHelper(config)
@@ -25,6 +31,8 @@ def make_helper(values=None, probe=None):
 
 
 class ZCalibrationTest(unittest.TestCase):
+    """Covers plugin startup, commands, and calibration behavior."""
+
     def test_load_config_returns_helper(self):
         printer = FakePrinter()
         config = FakeConfig(printer)
@@ -93,6 +101,15 @@ class ZCalibrationTest(unittest.TestCase):
         config = FakeConfig(printer)
         helper = z_calibration.ZCalibrationHelper(config)
         with self.assertRaisesRegex(FakeError, 'virtual endstop'):
+            helper.handle_connect()
+
+    def test_handle_connect_fails_on_runtime_contract_error(self):
+        probe = FakeProbe()
+        probe.mcu_probe = types.SimpleNamespace()
+        printer = FakePrinter(probe)
+        config = FakeConfig(printer)
+        helper = z_calibration.ZCalibrationHelper(config)
+        with self.assertRaisesRegex(FakeError, 'probe_endstop_query'):
             helper.handle_connect()
 
     def test_handle_connect_enforces_minimum_safe_z_height(self):
@@ -305,10 +322,14 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(probe.begin_calls, 1)
         self.assertEqual(probe.end_calls, 1)
 
-    def test_calibration_rejects_missing_legacy_probe_endstop(self):
+    def test_calibration_unwraps_legacy_probe_endstop_wrapper(self):
+        raw_endstop = FakeMCUEndstop()
+        wrapper = types.SimpleNamespace(
+            query_endstop=lambda print_time: False,
+            mcu_endstop=raw_endstop)
         probe = FakeLegacyProbe()
-        probe.mcu_probe = None
-        helper, printer = make_helper({
+        probe.mcu_probe = wrapper
+        values = {
             'switch_offset': '0.5',
             'offset_margins': '-10,10',
             'samples': '1',
@@ -322,14 +343,36 @@ class ZCalibrationTest(unittest.TestCase):
             'nozzle_xy_position': '10,10',
             'switch_xy_position': '20,20',
             'bed_xy_position': '30,30',
-        }, probe)
+        }
+        helper, printer = make_helper(values, probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
             [20.0, 20.0, 2.0],
+            [29.0, 28.0, 5.0],
         ]
-        with self.assertRaisesRegex(FakeError, 'does not expose'):
-            helper.cmd_CALIBRATE_Z(FakeGcmd())
-        self.assertEqual(helper.end_gcode.calls, 1)
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertIs(printer.homing.calls[-1][0], raw_endstop)
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+
+    def test_calibration_rejects_missing_legacy_probe_endstop(self):
+        probe = FakeLegacyProbe()
+        probe.mcu_probe = None
+        with self.assertRaisesRegex(FakeError, 'legacy_probe_mcu_endstop'):
+            make_helper({
+                'switch_offset': '0.5',
+                'offset_margins': '-10,10',
+                'samples': '1',
+                'samples_tolerance': '0.5',
+                'samples_tolerance_retries': '0',
+                'lift_speed': '10',
+                'safe_z_height': '5',
+                'probing_speed': '6',
+                'probing_second_speed': '2',
+                'probing_retract_dist': '1',
+                'nozzle_xy_position': '10,10',
+                'switch_xy_position': '20,20',
+                'bed_xy_position': '30,30',
+            }, probe)
 
     def test_calibration_rejects_offset_outside_margins(self):
         session = FakeProbeSession([

@@ -1,11 +1,20 @@
+# Shared fake Klipper/Kalico objects for unit tests.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 from collections import namedtuple
 
 
 class FakeError(Exception):
+    """Exception type returned by fake Klipper error factories."""
+
     pass
 
 
 class FakeMCUEndstop:
+    """Minimal MCU endstop surface used by probing_move tests."""
+
     def get_mcu(self):
         return None
 
@@ -31,6 +40,8 @@ ProbeResult = namedtuple(
 
 
 class FakeGcmd:
+    """Small G-Code command object with parameter and response capture."""
+
     def __init__(self, command='CALIBRATE_Z', params=None):
         self.command = command
         self.params = dict(params or {})
@@ -73,6 +84,8 @@ class FakeGcmd:
 
 
 class FakeGCode:
+    """Captures registered commands and synthetic G-Code commands."""
+
     def __init__(self):
         self.commands = {}
         self.created_commands = []
@@ -91,6 +104,8 @@ class FakeGCode:
 
 
 class FakeTemplate:
+    """Counts macro template executions."""
+
     def __init__(self):
         self.calls = 0
 
@@ -99,6 +114,8 @@ class FakeTemplate:
 
 
 class FakeGCodeMacro:
+    """Creates fake templates for configured macro hooks."""
+
     def __init__(self):
         self.templates = {}
 
@@ -109,6 +126,8 @@ class FakeGCodeMacro:
 
 
 class FakeConfig:
+    """Provides the subset of Klipper config parsing used by the plugin."""
+
     def __init__(self, printer, values=None):
         self.printer = printer
         self.values = dict(values or {})
@@ -163,11 +182,15 @@ class FakeConfig:
 
 
 class FakeReactor:
+    """Provides deterministic reactor time for status checks."""
+
     def monotonic(self):
         return 123.0
 
 
 class FakeToolhead:
+    """Tracks position, homing state, and requested manual moves."""
+
     def __init__(self):
         self.position = [0.0, 0.0, 10.0, 0.0]
         self.homed_axes = 'xyz'
@@ -190,6 +213,8 @@ class FakeToolhead:
 
 
 class FakeHoming:
+    """Returns queued probing results and records probing_move calls."""
+
     def __init__(self, toolhead):
         self.toolhead = toolhead
         self.results = []
@@ -203,6 +228,8 @@ class FakeHoming:
 
 
 class FakeGCodeMove:
+    """Captures SET_GCODE_OFFSET command parameters."""
+
     def __init__(self):
         self.offset_commands = []
 
@@ -211,11 +238,15 @@ class FakeGCodeMove:
 
 
 class FakeQueryEndstops:
+    """Exposes a default physical Z endstop entry."""
+
     def __init__(self):
         self.endstops = [(FakeMCUEndstop(), 'stepper_z')]
 
 
 class FakeProbeEndstop:
+    """Probe endstop that returns a configurable trigger state."""
+
     def __init__(self, triggered=False):
         self.triggered = triggered
 
@@ -224,6 +255,8 @@ class FakeProbeEndstop:
 
 
 class FakeProbeSession:
+    """Probe session with queued results and command capture."""
+
     def __init__(self, results):
         self.results = list(results)
         self.pending = []
@@ -247,6 +280,8 @@ class FakeProbeSession:
 
 
 class FakeEmptyProbeSession:
+    """Probe session that simulates a missing probe result."""
+
     def run_probe(self, gcmd):
         pass
 
@@ -258,6 +293,8 @@ class FakeEmptyProbeSession:
 
 
 class FakeProbe:
+    """Modern probe exposing start_probe_session and get_probe_params."""
+
     def __init__(self, session=None, offsets=(1.0, 2.0, 1.5)):
         self.mcu_probe = FakeProbeEndstop(False)
         self.session = session or FakeProbeSession([])
@@ -280,6 +317,8 @@ class FakeProbe:
 
 
 class FakeLegacyProbe:
+    """Legacy probe exposing multi_probe_begin/end fallback hooks."""
+
     def __init__(self):
         self.mcu_probe = FakeProbeEndstop(False)
         self.offsets = (1.0, 2.0, 1.5)
@@ -309,6 +348,8 @@ class FakeLegacyProbe:
 
 
 class FakeOldProbe:
+    """Old probe exposing deprecated default attributes."""
+
     sample_count = 2
     samples_tolerance = 0.05
     samples_retries = 3
@@ -321,11 +362,15 @@ class FakeOldProbe:
 
 
 class FakeProbeWithProbeSession:
+    """Old probe exposing a nested probe_session object."""
+
     def __init__(self):
         self.probe_session = FakeProbeSession([])
 
 
 class FakePrinter:
+    """Printer object registry and error factory used by unit tests."""
+
     missing = object()
 
     def __init__(self, probe=None):
@@ -374,16 +419,22 @@ class FakePrinter:
 
 
 class FakeStepper:
+    """Stepper that reports itself as active for Z."""
+
     def is_active_axis(self, axis):
         return axis == 'z'
 
 
 class FakeInactiveStepper:
+    """Stepper that does not report any active axis."""
+
     def is_active_axis(self, axis):
         return False
 
 
 class FakeRail:
+    """Z rail exposing homing settings consumed by HomingCompat."""
+
     position_endstop = 0.0
     homing_speed = 6.0
     second_homing_speed = 2.0
@@ -395,5 +446,7 @@ class FakeRail:
 
 
 class FakeInactiveRail(FakeRail):
+    """Rail whose stepper is not active on Z."""
+
     def get_steppers(self):
         return [FakeInactiveStepper()]

@@ -1,3 +1,8 @@
+# Unit tests for Klipper source contract validation.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib.util
 import pathlib
 import tempfile
@@ -8,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
+    """Load a script module from the repository scripts directory."""
     path = ROOT / 'scripts' / name
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
@@ -19,9 +25,12 @@ check_contract = load_script('check_klipper_contract.py')
 
 
 class KlipperContractTest(unittest.TestCase):
+    """Covers synthetic Klipper source contract profiles."""
+
     def make_tree(self, probe_source=None, homing_source=None,
                   bed_mesh_source=None, mcu_source=None,
                   manual_probe_source='default'):
+        """Create a temporary synthetic Klipper source tree."""
         tempdir = tempfile.TemporaryDirectory()
         root = pathlib.Path(tempdir.name)
         (root / 'klippy' / 'extras').mkdir(parents=True)
@@ -49,6 +58,7 @@ class KlipperContractTest(unittest.TestCase):
         return tempdir, root
 
     def valid_probe_source(self):
+        """Return source for a modern supported probe profile."""
         return (
             "class PrinterProbe:\n"
             "    def start_probe_session(self, gcmd):\n"
@@ -62,6 +72,7 @@ class KlipperContractTest(unittest.TestCase):
             "        pass\n")
 
     def valid_manual_probe_source(self):
+        """Return source containing a ProbeResult definition."""
         return (
             "class ProbeResult:\n"
             "    def __init__(self):\n"
@@ -71,6 +82,7 @@ class KlipperContractTest(unittest.TestCase):
             "        self.test_z = 0\n")
 
     def valid_legacy_probe_source(self):
+        """Return source for a legacy MCU endstop probe profile."""
         return (
             "class ProbeEndstopWrapper:\n"
             "    def __init__(self):\n"

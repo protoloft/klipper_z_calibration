@@ -107,7 +107,7 @@ The installer manages the `[update_manager z_calibration]` section in
 
 Moonraker updates do not run `install.sh`. Existing installs with no
 `channel` continue to use Moonraker's implicit `dev` channel until the user
-reruns `install.sh` or manually adds `channel: stable` to the updater
+reruns `./install.sh` or manually adds `channel: stable` to the updater
 section.
 
 Moonraker's modern default config path is
@@ -141,7 +141,7 @@ The plugin registers these G-Code commands:
   position after calibration.
 
 Command parameters and complete configuration examples are documented in the
-Wiki.
+[Wiki](https://github.com/protoloft/klipper_z_calibration/wiki).
 
 ## Development And Releases
 

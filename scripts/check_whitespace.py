@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-# Check formatting rules used by Klipper-style Python modules.
+# Check Klipper-style whitespace and formatting rules.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import pathlib
@@ -26,6 +28,7 @@ SKIP_SUFFIXES = {
 
 
 def iter_files():
+    """Yield repository files that should be whitespace checked."""
     for path in sorted(ROOT.rglob('*')):
         if not path.is_file():
             continue
@@ -38,10 +41,12 @@ def iter_files():
 
 
 def is_makefile(path):
+    """Return whether tabs are allowed in this file."""
     return path.name == 'Makefile' or path.suffix == '.mk'
 
 
 def report(errors, path, lineno, msg):
+    """Append a formatted whitespace error."""
     relpath = path.relative_to(ROOT)
     if lineno is None:
         errors.append("%s: %s" % (relpath, msg))
@@ -50,6 +55,7 @@ def report(errors, path, lineno, msg):
 
 
 def check_file(path, errors):
+    """Check one file for encoding and whitespace violations."""
     data = path.read_bytes()
     try:
         text = data.decode('utf-8')
@@ -74,6 +80,7 @@ def check_file(path, errors):
 
 
 def main():
+    """CLI entrypoint for whitespace validation."""
     errors = []
     for path in iter_files():
         check_file(path, errors)

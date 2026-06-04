@@ -1,3 +1,8 @@
+# Unit tests for firmware compatibility checkout orchestration.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib.util
 import pathlib
 import tempfile
@@ -8,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
+    """Load a script module from the repository scripts directory."""
     path = ROOT / 'scripts' / name
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
@@ -19,6 +25,8 @@ firmware_compat = load_script('check_firmware_compat.py')
 
 
 class FirmwareCompatTest(unittest.TestCase):
+    """Covers firmware checkout orchestration and tag parsing."""
+
     def test_version_key_sorts_semver_tags(self):
         tags = ['v1.10.0', 'v1.2.9', 'v1.2.10']
         self.assertEqual(

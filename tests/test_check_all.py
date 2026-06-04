@@ -1,3 +1,8 @@
+# Unit tests for the aggregate validation runner.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib.util
 import pathlib
 import unittest
@@ -7,6 +12,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
+    """Load a script module from the repository scripts directory."""
     path = ROOT / 'scripts' / name
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
@@ -18,6 +24,8 @@ check_all = load_script('check_all.py')
 
 
 class CheckAllTest(unittest.TestCase):
+    """Covers the aggregate validation command runner."""
+
     def test_command_text_includes_env_prefix(self):
         text = check_all.command_text(
             ('python3', '-m', 'unittest'),

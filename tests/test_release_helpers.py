@@ -1,3 +1,8 @@
+# Unit tests for release validation and Moonraker update config helpers.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib.util
 import pathlib
 import tempfile
@@ -8,6 +13,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def load_script(name):
+    """Load a script module from the repository scripts directory."""
     path = ROOT / 'scripts' / name
     spec = importlib.util.spec_from_file_location(path.stem, path)
     module = importlib.util.module_from_spec(spec)
@@ -20,6 +26,8 @@ update_moonraker = load_script('update_moonraker.py')
 
 
 class ReleaseValidationTest(unittest.TestCase):
+    """Covers release tag metadata validation."""
+
     def test_classifies_stable_tag(self):
         metadata = check_release.classify_tag('v1.2.3')
         self.assertEqual(metadata['version'], '1.2.3')
@@ -45,6 +53,8 @@ class ReleaseValidationTest(unittest.TestCase):
 
 
 class MoonrakerUpdateTest(unittest.TestCase):
+    """Covers Moonraker update_manager config migration."""
+
     def test_adds_new_stable_section(self):
         updated, changed = update_moonraker.update_config_text(
             "[server]\nhost: 0.0.0.0\n", "/repo")

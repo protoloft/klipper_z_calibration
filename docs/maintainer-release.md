@@ -220,7 +220,7 @@ Use a stable release for production-ready changes.
    - compatibility changes
    - no-channel Moonraker migration guidance
    - exact `channel: stable` updater config snippet
-   - Moonraker restart instructions after editing `moonraker.conf`
+   - Moonraker restart instruction after editing `moonraker.conf`
    - installer migration notes that explain `install.sh` must be rerun
    - manual verification performed
 10. Publish the GitHub Release manually.
