@@ -15,7 +15,7 @@ if MODULE_PATH not in sys.path:
 
 from klipper_compat import BedMeshCompat, GCodeOffsetCompat, HomingCompat
 from klipper_compat import PrinterObjectCompat, ProbeCompat, ToolheadCompat
-from klipper_compat import validate_runtime_contract
+from klipper_compat import run_gcode_template, validate_runtime_contract
 
 class ZCalibrationHelper:
     """Owns plugin configuration, startup state, and G-Code commands."""
@@ -60,11 +60,16 @@ class ZCalibrationHelper:
         self.bed_site = self._get_xy(config, "bed_xy_position", True)
         self.wiggle_offsets = self._get_xy(config, "wiggle_xy_offsets", True)
         gcode_macro = self.objects_compat.load_gcode_macro(config)
-        self.start_gcode = gcode_macro.load_template(config, 'start_gcode', '')
-        self.switch_gcode = gcode_macro.load_template(config,
-                                                      'before_switch_gcode',
-                                                      '')
-        self.end_gcode = gcode_macro.load_template(config, 'end_gcode', '')
+        self.start_gcode = self._load_gcode_template(config, gcode_macro,
+                                                     'start_gcode')
+        self.switch_gcode = self._load_gcode_template(
+            config, gcode_macro, 'before_switch_gcode')
+        self.end_gcode = self._load_gcode_template(config, gcode_macro,
+                                                   'end_gcode')
+        self.offset_gcode = self._load_optional_gcode_template(
+            config, gcode_macro, 'offset_gcode')
+        self.error_gcode = self._load_optional_gcode_template(
+            config, gcode_macro, 'error_gcode')
         self.query_endstops = self.objects_compat.load_query_endstops(config)
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
@@ -80,6 +85,19 @@ class ZCalibrationHelper:
                                     self.cmd_CALCULATE_SWITCH_OFFSET,
                                     desc=self.cmd_CALCULATE_SWITCH_OFFSET_help)
     # Configuration parsing helpers
+    def _load_gcode_template(self, config, gcode_macro, name):
+        """Load a G-Code template that defaults to an empty no-op."""
+        return gcode_macro.load_template(config, name, '')
+
+    def _load_optional_gcode_template(self, config, gcode_macro, name):
+        """Load an optional G-Code template, rejecting explicit blanks."""
+        value = config.get(name, None)
+        if value is None:
+            return None
+        if not value.strip():
+            raise config.error("%s in %s cannot be blank" % (name, self.name))
+        return gcode_macro.load_template(config, name)
+
     def _get_xy(self, config, name, optional=False):
         """Read an optional `x,y` config value as a Klipper coordinate."""
         if optional and config.get(name, None) is None:
@@ -134,7 +152,8 @@ class ZCalibrationHelper:
             raise self.printer.config_error("A probe is needed for %s"
                                             % (self.name,))
         validate_runtime_contract(self.printer, probe, self.name,
-                                  self.z_endstop)
+                                  self.z_endstop, self.offset_gcode,
+                                  self.error_gcode)
         probe_defaults = ProbeCompat(self, probe).get_config_defaults()
         if self.samples is None:
             self.samples = probe_defaults['samples']
@@ -175,15 +194,19 @@ class ZCalibrationHelper:
     def cmd_CALIBRATE_Z(self, gcmd):
         """Run the full nozzle, switch, and bed probe calibration flow."""
         self.last_state = False
-        self._require_z_homed(gcmd)
-        nozzle_site = self._get_nozzle_site(gcmd)
-        switch_site = self._get_switch_site(gcmd, nozzle_site)
-        bed_site = self._get_bed_site(gcmd)
-        switch_offset = self._get_switch_offset(gcmd)
-        self._log_params(gcmd, switch_offset, nozzle_site, switch_site,
-                         bed_site)
-        run = CalibrationRun(self, gcmd)
-        run.calibrate_z(switch_offset, nozzle_site, switch_site, bed_site)
+        try:
+            self._require_z_homed(gcmd)
+            nozzle_site = self._get_nozzle_site(gcmd)
+            switch_site = self._get_switch_site(gcmd, nozzle_site)
+            bed_site = self._get_bed_site(gcmd)
+            switch_offset = self._get_switch_offset(gcmd)
+            self._log_params(gcmd, switch_offset, nozzle_site, switch_site,
+                             bed_site)
+            run = CalibrationRun(self, gcmd)
+            run.calibrate_z(switch_offset, nozzle_site, switch_site, bed_site)
+        except Exception as err:
+            self._run_error_gcode(err)
+            raise
     cmd_PROBE_Z_ACCURACY_help = ("Probe Z-Endstop accuracy at"
                                  " Nozzle-Endstop position")
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
@@ -320,6 +343,14 @@ class ZCalibrationHelper:
                          " the switch_offset for %s, or use the SWITCH_OFFSET"
                          " parameter."
                          % (gcmd.get_command(), self.name))
+    def _run_error_gcode(self, err):
+        """Run the configured error hook without masking the original error."""
+        if self.error_gcode is None:
+            return
+        try:
+            run_gcode_template(self.error_gcode, {'ERROR': err})
+        except Exception:
+            logging.exception("error_gcode failed")
     # Movement and probing primitives
     def _probe(self, gcmd, mcu_endstop, z_position, speed, wiggle=False,
                retract=True):
@@ -404,8 +435,12 @@ class CalibrationRun:
         self.probe = self.objects_compat.lookup_probe()
         self.probe_compat = ProbeCompat(helper, self.probe, gcmd)
         self.toolhead_compat = ToolheadCompat(helper.printer)
-        gcode_move = self.objects_compat.lookup_gcode_move()
-        self.gcode_offset = GCodeOffsetCompat(self.gcode, gcode_move)
+        if helper.offset_gcode is None:
+            gcode_move = self.objects_compat.lookup_gcode_move()
+        else:
+            gcode_move = None
+        self.gcode_offset = GCodeOffsetCompat(self.gcode, gcode_move,
+                                              helper.offset_gcode)
         self.offset_margins = helper.offset_margins
     def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False,
                        wiggle=False):

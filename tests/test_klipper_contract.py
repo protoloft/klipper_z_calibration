@@ -29,7 +29,7 @@ class KlipperContractTest(unittest.TestCase):
 
     def make_tree(self, probe_source=None, homing_source=None,
                   bed_mesh_source=None, mcu_source=None,
-                  manual_probe_source='default'):
+                  gcode_macro_source=None, manual_probe_source='default'):
         """Create a temporary synthetic Klipper source tree."""
         tempdir = tempfile.TemporaryDirectory()
         root = pathlib.Path(tempdir.name)
@@ -54,6 +54,9 @@ class KlipperContractTest(unittest.TestCase):
             encoding='utf-8')
         (root / 'klippy' / 'extras' / 'bed_mesh.py').write_text(
             bed_mesh_source or "zero_reference_position = None\n",
+            encoding='utf-8')
+        (root / 'klippy' / 'extras' / 'gcode_macro.py').write_text(
+            gcode_macro_source or self.valid_gcode_macro_source(),
             encoding='utf-8')
         return tempdir, root
 
@@ -110,6 +113,33 @@ class KlipperContractTest(unittest.TestCase):
             "        pass\n"
             "    def query_probe(self):\n"
             "        return self.mcu_probe.query_endstop(0.0)\n")
+
+    def valid_gcode_macro_source(self):
+        """Return source containing the template wrapper contract."""
+        return (
+            "class TemplateWrapper:\n"
+            "    def __init__(self):\n"
+            "        self.create_template_context = None\n"
+            "    def run_gcode_from_command(self, context=None):\n"
+            "        pass\n"
+            "class PrinterGCodeMacro:\n"
+            "    def load_template(self, config, option, default=None):\n"
+            "        return TemplateWrapper()\n")
+
+    def valid_kalico_gcode_macro_source(self):
+        """Return source for Kalico's template wrapper layout."""
+        return (
+            "class TemplateWrapperJinja:\n"
+            "    def __init__(self):\n"
+            "        self.create_template_context = None\n"
+            "    def run_gcode_from_command(self, context=None):\n"
+            "        pass\n"
+            "class Template:\n"
+            "    def __getattr__(self, name):\n"
+            "        return getattr(self.function, name)\n"
+            "class PrinterGCodeMacro:\n"
+            "    def load_template(self, config, option, default=None):\n"
+            "        return Template()\n")
 
     def test_valid_synthetic_tree_passes(self):
         tempdir, root = self.make_tree()
@@ -186,6 +216,21 @@ class KlipperContractTest(unittest.TestCase):
         with tempdir:
             errors = check_contract.check_klipper_contract(root)
         self.assertIn('Klipper contract failed: MCU_endstop not found', errors)
+
+    def test_kalico_template_layout_passes(self):
+        tempdir, root = self.make_tree(
+            gcode_macro_source=self.valid_kalico_gcode_macro_source())
+        with tempdir:
+            self.assertEqual(check_contract.check_klipper_contract(root), [])
+
+    def test_missing_template_wrapper_fails(self):
+        tempdir, root = self.make_tree(gcode_macro_source="VALUE = 1\n")
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: PrinterGCodeMacro.load_template '
+            'not found',
+            errors)
 
 
 if __name__ == '__main__':

@@ -89,11 +89,14 @@ class RuntimeContractValidator:
     # endstop queries, and no probe session start. It catches live object shape
     # mismatches early, while behavior inside created sessions/results remains
     # covered by focused tests and the source contract checker.
-    def __init__(self, printer, probe, section_name, z_endstop=None):
+    def __init__(self, printer, probe, section_name, z_endstop=None,
+                 offset_gcode=None, error_gcode=None):
         self.printer = printer
         self.probe = probe
         self.section_name = section_name
         self.z_endstop = z_endstop
+        self.offset_gcode = offset_gcode
+        self.error_gcode = error_gcode
         self.objects = PrinterObjectCompat(printer)
 
     def validate(self):
@@ -101,7 +104,14 @@ class RuntimeContractValidator:
         self._validate_homing_probing_move()
         self._validate_z_endstop_probe_target()
         self._validate_toolhead_motion_status()
-        self._validate_gcode_offset_command()
+        if self.offset_gcode is None:
+            self._validate_gcode_offset_command()
+        else:
+            self._validate_gcode_template(self.offset_gcode,
+                                          'offset_gcode_template')
+        if self.error_gcode is not None:
+            self._validate_gcode_template(self.error_gcode,
+                                          'error_gcode_template')
         self._validate_probe_defaults()
         self._validate_probe_execution_profile()
         self._validate_legacy_probe_mcu_endstop()
@@ -137,6 +147,11 @@ class RuntimeContractValidator:
         gcode_move = self._lookup(topic, self.objects.lookup_gcode_move)
         self._require_callable(gcode, 'create_gcode_command', topic)
         self._require_callable(gcode_move, 'cmd_SET_GCODE_OFFSET', topic)
+
+    def _validate_gcode_template(self, template, topic):
+        """Ensure a configured G-Code template can receive params."""
+        for attr in ['create_template_context', 'run_gcode_from_command']:
+            self._require_callable(template, attr, topic)
 
     def _validate_probe_defaults(self):
         """Ensure probe defaults can be read from a supported API shape."""
@@ -234,10 +249,11 @@ class RuntimeContractValidator:
         raise self.printer.config_error(message)
 
 
-def validate_runtime_contract(printer, probe, section_name, z_endstop=None):
+def validate_runtime_contract(printer, probe, section_name, z_endstop=None,
+                              offset_gcode=None, error_gcode=None):
     """Validate live Klipper/Kalico objects during plugin startup."""
     RuntimeContractValidator(printer, probe, section_name,
-                             z_endstop).validate()
+                             z_endstop, offset_gcode, error_gcode).validate()
 
 
 class EndstopWrapper:
@@ -499,12 +515,16 @@ class ProbeCompat:
 class GCodeOffsetCompat:
     """Applies new Z offsets through Klipper's G-Code move object."""
 
-    def __init__(self, gcode, gcode_move):
+    def __init__(self, gcode, gcode_move=None, offset_gcode=None):
         self.gcode = gcode
         self.gcode_move = gcode_move
+        self.offset_gcode = offset_gcode
 
     def set_new_offset(self, offset):
         """Reset the old Z offset and apply the newly calculated adjust."""
+        if self.offset_gcode is not None:
+            self._run_offset_gcode(offset)
+            return
         gcmd_offset = self.gcode.create_gcode_command("SET_GCODE_OFFSET",
                                                       "SET_GCODE_OFFSET",
                                                       {'Z': 0.0})
@@ -513,3 +533,17 @@ class GCodeOffsetCompat:
                                                       "SET_GCODE_OFFSET",
                                                       {'Z_ADJUST': offset})
         self.gcode_move.cmd_SET_GCODE_OFFSET(gcmd_offset)
+
+    def _run_offset_gcode(self, offset):
+        """Run a configured offset_gcode template with params.Z."""
+        run_gcode_template(self.offset_gcode, {'Z': offset})
+
+
+def run_gcode_template(template, params):
+    """Run a loaded G-Code template with command-style parameters."""
+    params = {name: str(value) for name, value in params.items()}
+    context = template.create_template_context()
+    context['params'] = params
+    context['rawparams'] = ' '.join(["%s=%s" % item
+                                     for item in params.items()])
+    template.run_gcode_from_command(context)

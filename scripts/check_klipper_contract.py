@@ -224,6 +224,17 @@ def validate_mcu(root, errors):
     require(has_class(tree, 'MCU_endstop'), 'MCU_endstop not found', errors)
 
 
+def validate_gcode_macro(root, errors):
+    """Validate source markers for configured G-Code template hooks."""
+    source, tree = read_source(root, 'klippy/extras/gcode_macro.py')
+    require(class_has_function(tree, 'PrinterGCodeMacro', 'load_template'),
+            'PrinterGCodeMacro.load_template not found', errors)
+    require(has_function(tree, 'run_gcode_from_command'),
+            'template run_gcode_from_command not found', errors)
+    require('create_template_context' in source,
+            'template create_template_context not found', errors)
+
+
 def validate_baseline(root):
     """Validate non-profile contracts required by all supported profiles."""
     errors = []
@@ -231,6 +242,7 @@ def validate_baseline(root):
         validate_homing(root, errors)
         validate_bed_mesh(root, errors)
         validate_mcu(root, errors)
+        validate_gcode_macro(root, errors)
     except ContractError as err:
         errors.append(str(err))
     return errors

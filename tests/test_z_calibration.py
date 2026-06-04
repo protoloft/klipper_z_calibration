@@ -59,6 +59,138 @@ class ZCalibrationTest(unittest.TestCase):
                 with self.assertRaises(FakeError):
                     z_calibration.ZCalibrationHelper(config)
 
+    def test_optional_gcode_rejects_blank_value(self):
+        for raw in ['', '   ']:
+            for option in ['offset_gcode', 'error_gcode']:
+                with self.subTest(option=option, raw=raw):
+                    printer = FakePrinter()
+                    config = FakeConfig(printer, {option: raw})
+                    pattern = '%s .* cannot be blank' % (option,)
+                    with self.assertRaisesRegex(FakeError, pattern):
+                        z_calibration.ZCalibrationHelper(config)
+
+    def test_error_gcode_runs_for_early_calibration_errors(self):
+        helper, printer = make_helper({
+            'error_gcode': 'RESPOND MSG={params.ERROR}',
+        })
+        printer.toolhead.homed_axes = 'xy'
+        with self.assertRaisesRegex(FakeError, 'must home axes first'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        error_template = printer.gcode_macro.templates['error_gcode']
+        self.assertEqual(error_template.calls, 1)
+        self.assertIn('must home axes first',
+                      error_template.contexts[0]['params']['ERROR'])
+        self.assertEqual(printer.gcode_macro.templates['end_gcode'].calls, 0)
+
+    def test_error_gcode_failure_preserves_original_error(self):
+        helper, printer = make_helper({
+            'error_gcode': 'RESPOND MSG={params.ERROR}',
+        })
+        error_template = printer.gcode_macro.templates['error_gcode']
+        error_template.exception = FakeError('error hook failed')
+        printer.toolhead.homed_axes = 'xy'
+        with self.assertLogs(level='ERROR') as logs:
+            with self.assertRaisesRegex(FakeError, 'must home axes first'):
+                helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertEqual(error_template.calls, 1)
+        self.assertIn('error_gcode failed', '\n'.join(logs.output))
+
+    def test_gcode_options_load_through_shared_templates(self):
+        helper, printer = make_helper({
+            'offset_gcode': 'RESPOND MSG=test',
+            'error_gcode': 'RESPOND MSG=error',
+        })
+        self.assertIs(helper.start_gcode,
+                      printer.gcode_macro.templates['start_gcode'])
+        self.assertIs(helper.switch_gcode,
+                      printer.gcode_macro.templates['before_switch_gcode'])
+        self.assertIs(helper.end_gcode,
+                      printer.gcode_macro.templates['end_gcode'])
+        self.assertIs(helper.offset_gcode,
+                      printer.gcode_macro.templates['offset_gcode'])
+        self.assertIs(helper.error_gcode,
+                      printer.gcode_macro.templates['error_gcode'])
+
+    def test_error_gcode_does_not_run_on_calibration_success(self):
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        values = {
+            'switch_offset': '0.5',
+            'offset_margins': '-10,10',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+            'error_gcode': 'RESPOND MSG={params.ERROR}',
+        }
+        helper, printer = make_helper(values, probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertEqual(
+            printer.gcode_macro.templates['error_gcode'].calls, 0)
+
+    def test_error_gcode_runs_after_end_gcode_for_calibration_errors(self):
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper({
+            'switch_offset': '0.5',
+            'offset_margins': '-1,1',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+            'error_gcode': 'RESPOND MSG={params.ERROR}',
+        }, probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        with self.assertRaisesRegex(FakeError, 'outside the configured range'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        error_template = printer.gcode_macro.templates['error_gcode']
+        self.assertEqual(error_template.calls, 1)
+        self.assertIn('outside the configured range',
+                      error_template.contexts[0]['params']['ERROR'])
+        self.assertEqual(printer.gcode_macro.executions, [
+            'start_gcode',
+            'before_switch_gcode',
+            'end_gcode',
+            'error_gcode',
+        ])
+
+    def test_error_gcode_rawparams_contains_error_message(self):
+        helper, printer = make_helper({
+            'error_gcode': 'RESPOND MSG={rawparams}',
+        })
+        printer.toolhead.homed_axes = 'xy'
+        with self.assertRaisesRegex(FakeError, 'must home axes first'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        error_template = printer.gcode_macro.templates['error_gcode']
+        self.assertIn('ERROR=', error_template.contexts[0]['rawparams'])
+        self.assertIn('must home axes first',
+                      error_template.contexts[0]['rawparams'])
+
     def test_parse_xy_rejects_malformed_gcode_parameter(self):
         helper, _printer = make_helper()
         gcmd = FakeGcmd(params={'NOZZLE_POSITION': '1,2,3'})
@@ -293,6 +425,41 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(session.run_gcmds[0].params['PROBE_SPEED'], '2.0')
         self.assertTrue(session.ended)
 
+    def test_calibration_runs_offset_gcode_when_configured(self):
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        values = {
+            'switch_offset': '0.5',
+            'offset_margins': '-10,10',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+            'offset_gcode': 'SET_GCODE_OFFSET Z_ADJUST={params.Z|float}',
+        }
+        helper, printer = make_helper(values, probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        offset_template = printer.gcode_macro.templates['offset_gcode']
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+        self.assertEqual(printer.gcode_move.offset_commands, [])
+        self.assertEqual(offset_template.calls, 1)
+        self.assertEqual(offset_template.contexts[0]['params']['Z'], '3.5')
+        self.assertEqual(offset_template.contexts[0]['rawparams'], 'Z=3.5')
+        self.assertEqual(offset_template.contexts[0]['printer'], 'fake')
+
     def test_calibration_uses_legacy_probe_endstop_path(self):
         probe = FakeLegacyProbe()
         probe.mcu_probe = FakeMCUEndstop()
@@ -401,6 +568,37 @@ class ZCalibrationTest(unittest.TestCase):
         with self.assertRaisesRegex(FakeError, 'outside the configured range'):
             helper.cmd_CALIBRATE_Z(FakeGcmd())
         self.assertFalse(printer.gcode_move.offset_commands)
+
+    def test_calibration_rejects_offset_before_running_offset_gcode(self):
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper({
+            'switch_offset': '0.5',
+            'offset_margins': '-1,1',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+            'offset_gcode': 'SET_GCODE_OFFSET Z_ADJUST={params.Z|float}',
+        }, probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        with self.assertRaisesRegex(FakeError, 'outside the configured range'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        offset_template = printer.gcode_macro.templates['offset_gcode']
+        self.assertFalse(printer.gcode_move.offset_commands)
+        self.assertEqual(offset_template.calls, 0)
 
     def test_probe_on_site_retries_and_uses_median(self):
         helper, printer = make_helper({

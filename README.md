@@ -124,11 +124,18 @@ Current releases expect the modern option names:
 
 - `offset_margins`
 - `safe_z_height`
+- `offset_gcode`
+- `error_gcode`
 
 The older `max_deviation` and `clearance` options are no longer supported.
 
 The smaller the configured `switch_offset`, the farther the nozzle is from the
 bed.
+
+`offset_gcode` is an optional hook for toolchanger systems that need to apply
+the calculated Z adjustment through custom G-Code.
+
+`error_gcode` is an optional hook for reacting to `CALIBRATE_Z` failures.
 
 ## Commands
 

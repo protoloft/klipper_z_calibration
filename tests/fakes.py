@@ -106,11 +106,23 @@ class FakeGCode:
 class FakeTemplate:
     """Counts macro template executions."""
 
-    def __init__(self):
+    def __init__(self, name=None, executions=None):
+        self.name = name
         self.calls = 0
+        self.contexts = []
+        self.exception = None
+        self.executions = executions
 
-    def run_gcode_from_command(self):
+    def create_template_context(self):
+        return {'printer': 'fake'}
+
+    def run_gcode_from_command(self, context=None):
         self.calls += 1
+        self.contexts.append(context)
+        if self.executions is not None:
+            self.executions.append(self.name)
+        if self.exception is not None:
+            raise self.exception
 
 
 class FakeGCodeMacro:
@@ -118,9 +130,10 @@ class FakeGCodeMacro:
 
     def __init__(self):
         self.templates = {}
+        self.executions = []
 
-    def load_template(self, config, name, default):
-        template = FakeTemplate()
+    def load_template(self, config, name, default=None):
+        template = FakeTemplate(name, self.executions)
         self.templates[name] = template
         return template
 

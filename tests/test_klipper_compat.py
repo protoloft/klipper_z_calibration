@@ -170,6 +170,43 @@ class RuntimeContractValidatorTest(unittest.TestCase):
                 printer, printer.objects['probe'], 'z_calibration',
                 z_endstop)
 
+    def test_offset_gcode_runtime_contract_passes(self):
+        printer = FakePrinter()
+        config = FakeConfig(printer, {'offset_gcode': 'RESPOND MSG=test'})
+        offset_gcode = printer.gcode_macro.load_template(config,
+                                                         'offset_gcode')
+        printer.gcode_move.cmd_SET_GCODE_OFFSET = None
+        klipper_compat.validate_runtime_contract(
+            printer, printer.objects['probe'], 'z_calibration',
+            offset_gcode=offset_gcode)
+
+    def test_error_gcode_runtime_contract_passes(self):
+        printer = FakePrinter()
+        config = FakeConfig(printer, {'error_gcode': 'RESPOND MSG=test'})
+        error_gcode = printer.gcode_macro.load_template(config,
+                                                        'error_gcode')
+        klipper_compat.validate_runtime_contract(
+            printer, printer.objects['probe'], 'z_calibration',
+            error_gcode=error_gcode)
+
+    def test_missing_offset_gcode_template_fails_runtime_contract(self):
+        printer = FakePrinter()
+        offset_gcode = types.SimpleNamespace(
+            run_gcode_from_command=lambda context: None)
+        with self.assertRaisesRegex(FakeError, 'offset_gcode_template'):
+            klipper_compat.validate_runtime_contract(
+                printer, printer.objects['probe'], 'z_calibration',
+                offset_gcode=offset_gcode)
+
+    def test_missing_error_gcode_template_fails_runtime_contract(self):
+        printer = FakePrinter()
+        error_gcode = types.SimpleNamespace(
+            run_gcode_from_command=lambda context: None)
+        with self.assertRaisesRegex(FakeError, 'error_gcode_template'):
+            klipper_compat.validate_runtime_contract(
+                printer, printer.objects['probe'], 'z_calibration',
+                error_gcode=error_gcode)
+
 
 if __name__ == '__main__':
     unittest.main()

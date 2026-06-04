@@ -6,6 +6,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import argparse
 import importlib.util
+import os
 import pathlib
 import re
 import subprocess
@@ -18,6 +19,9 @@ DEFAULT_REPO_DIR = ROOT / '.compat_repos'
 KLIPPER_URL = 'https://github.com/Klipper3d/klipper.git'
 KALICO_URL = 'https://github.com/KalicoCrew/kalico.git'
 TAG_RE = re.compile(r'refs/tags/(v[0-9]+\.[0-9]+\.[0-9]+)$')
+COLOR_GREEN = '\033[32m'
+COLOR_RED = '\033[31m'
+COLOR_RESET = '\033[0m'
 
 
 def load_contract_checker():
@@ -45,6 +49,29 @@ def run(command, cwd=None, capture=False):
     if capture:
         kwargs.update({'stdout': subprocess.PIPE})
     return subprocess.run([str(item) for item in command], **kwargs)
+
+
+def use_color(stream):
+    """Return whether status output should use ANSI colors."""
+    return stream.isatty() and os.environ.get('NO_COLOR') is None
+
+
+def color_text(text, color, enabled):
+    """Wrap text in an ANSI color when enabled."""
+    if not enabled:
+        return text
+    return "%s%s%s" % (color, text, COLOR_RESET)
+
+
+def write_result_line(name, status, detail='', color=None):
+    """Write one unittest-style compatibility result line."""
+    enabled = use_color(sys.stdout)
+    if color is not None:
+        status = color_text(status, color, enabled)
+    line = "  %-15s ... %s" % (name, status)
+    if detail:
+        line += " (%s)" % (detail,)
+    sys.stdout.write(line + "\n")
 
 
 def latest_klipper_tag():
@@ -84,15 +111,14 @@ def clone_or_update(path, url, ref, update=True):
 
 def check_contract(name, path):
     """Run source contract checks for one firmware checkout."""
-    sys.stdout.write("Checking %s contract at %s\n" % (name, path))
     errors = check_klipper_contract.check_klipper_contract(path)
     if errors:
+        write_result_line(name, 'FAIL', color=COLOR_RED)
         for error in errors:
-            sys.stderr.write("%s: %s\n" % (name, error))
+            sys.stdout.write("    - %s\n" % (error,))
         return 1
     profiles = check_klipper_contract.get_contract_profiles(path)
-    sys.stdout.write("%s contract checks passed: %s\n"
-                     % (name, ', '.join(profiles)))
+    write_result_line(name, 'ok', ', '.join(profiles), COLOR_GREEN)
     return 0
 
 
@@ -119,9 +145,15 @@ def run_checks(repo_dir, update=True):
             raise RuntimeError(
                 "missing %s; run without --no-update first" % (path,))
         clone_or_update(path, url, ref, update=update)
+    sys.stdout.write("\nFirmware compatibility checks: %s\n" % (repo_dir,))
     result = 0
     for name, _url, _ref, path in targets:
         result |= check_contract(name, path)
+    if result:
+        summary = color_text('FAILED', COLOR_RED, use_color(sys.stdout))
+    else:
+        summary = color_text('OK', COLOR_GREEN, use_color(sys.stdout))
+    sys.stdout.write("\nFirmware compatibility result: %s\n" % (summary,))
     return result
 
 
