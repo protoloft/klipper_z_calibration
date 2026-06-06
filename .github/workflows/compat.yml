@@ -1,0 +1,31 @@
+name: Klipper And Kalico Compatibility
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-contract:
+    name: Firmware contracts
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Check repository
+        run: python scripts/check_all.py
+
+      - name: Check firmware contracts
+        run: python scripts/check_firmware_compat.py
