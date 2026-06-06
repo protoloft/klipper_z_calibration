@@ -114,6 +114,16 @@ class InstallScriptTest(unittest.TestCase):
         self.assertNotIn('bad_requirements', result.stdout)
         self.assertIn('uninstall', result.stdout)
 
+    def test_main_rejects_invalid_num_installs_before_service_checks(self):
+        for value in ['0', '-1', 'abc']:
+            with self.subTest(value=value):
+                result = run_bash(
+                    "check_klipper(){ echo bad_service_check; }\n"
+                    "main -n %s\n" % (q(value),))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("-n must be a positive integer", result.stdout)
+                self.assertNotIn("bad_service_check", result.stdout)
+
     def test_default_moonraker_config_falls_back_to_old_path(self):
         with tempfile.TemporaryDirectory() as tempdir:
             default = pathlib.Path(tempdir) / 'printer_data' / 'moonraker.conf'

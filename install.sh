@@ -11,6 +11,7 @@ MOONRAKER_CONFIG="${HOME}/printer_data/config/moonraker.conf"
 MOONRAKER_FALLBACK="${HOME}/klipper_config/moonraker.conf"
 MOONRAKER_CONFIG_CUSTOM=0
 NUM_INSTALLS=0
+NUM_INSTALLS_CUSTOM=0
 
 # Force script to exit if an error occurs
 set -e
@@ -48,9 +49,21 @@ remove_file_if_present()
     fi
 }
 
+validate_num_installs()
+{
+    if [ "$NUM_INSTALLS_CUSTOM" -eq 0 ]; then
+        return
+    fi
+    if [[ ! "$NUM_INSTALLS" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: -n must be a positive integer"
+        exit -1
+    fi
+}
+
 # Step 1: Check for root user
 verify_ready()
 {
+    validate_num_installs
     # check for root user
     if [ "$EUID" -eq 0 ]; then
         echo "This script must not run as root"
@@ -232,12 +245,14 @@ main()
     OPTIND=1
     UNINSTALL=""
     MOONRAKER_CONFIG_CUSTOM=0
+    NUM_INSTALLS_CUSTOM=0
     while getopts ":k:m:n:uh" OPTION; do
         case "$OPTION" in
             k) KLIPPER_PATH="$OPTARG" ;;
             m) MOONRAKER_CONFIG="$OPTARG"
                MOONRAKER_CONFIG_CUSTOM=1 ;;
-            n) NUM_INSTALLS="$OPTARG" ;;
+            n) NUM_INSTALLS="$OPTARG"
+               NUM_INSTALLS_CUSTOM=1 ;;
             u) UNINSTALL=1 ;;
             h | ?) usage ;;
         esac

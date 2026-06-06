@@ -2,7 +2,7 @@
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="pictures/banner-dark.png">
     <source media="(prefers-color-scheme: light)" srcset="pictures/banner-light.png">
-    <img src="docs/assets/banner-light.png" alt="Automatic Z-Calibration" width="100%">
+    <img src="pictures/banner-light.png" alt="Automatic Z-Calibration" width="100%">
   </picture>
   <h1 align="center">Automatic Z-Calibration</h1>
 </p>
@@ -120,8 +120,8 @@ Use the Wiki for the full configuration reference:
 
 https://github.com/protoloft/klipper_z_calibration/wiki
 
-The smaller the configured `switch_offset`, the farther the nozzle is from the
-bed.
+**The smaller the configured `switch_offset`, the farther the nozzle is from the
+bed.**
 
 Current releases expect the modern option names:
 

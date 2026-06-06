@@ -52,7 +52,9 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(helper.offset_margins, [-0.25, 0.25])
 
     def test_offset_margins_reject_invalid_values(self):
-        for raw in ['-1,0,1', '1,-1', '', 'bad']:
+        invalid_values = [
+            '-1,0,1', '1,-1', '', 'bad', 'nan,1', '-inf,1', '1,inf']
+        for raw in invalid_values:
             with self.subTest(raw=raw):
                 printer = FakePrinter()
                 config = FakeConfig(printer, {'offset_margins': raw})
@@ -197,6 +199,15 @@ class ZCalibrationTest(unittest.TestCase):
         with self.assertRaisesRegex(FakeError,
                                     'unable to parse NOZZLE_POSITION'):
             helper._parse_xy('NOZZLE_POSITION', '1,2,3', gcmd)
+
+    def test_parse_xy_rejects_non_finite_gcode_parameter(self):
+        helper, _printer = make_helper()
+        gcmd = FakeGcmd(params={'NOZZLE_POSITION': 'nan,1'})
+        for raw in ['nan,1', '1,inf', '-inf,1']:
+            with self.subTest(raw=raw):
+                with self.assertRaisesRegex(FakeError,
+                                            'unable to parse NOZZLE_POSITION'):
+                    helper._parse_xy('NOZZLE_POSITION', raw, gcmd)
 
     def test_parse_xy_rejects_malformed_config_value(self):
         printer = FakePrinter()

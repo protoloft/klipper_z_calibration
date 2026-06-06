@@ -20,37 +20,82 @@ on:
           - beta
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  draft-release:
-    name: Draft release
+  validate-release-ref:
+    name: Validate release ref
     runs-on: ubuntu-latest
-    environment: release
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      version: ${{ steps.release.outputs.version }}
+      channel: ${{ steps.release.outputs.channel }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+      title: ${{ steps.release.outputs.title }}
     env:
       RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || '' }}
 
     steps:
-      - name: Check out release tag
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          ref: ${{ env.RELEASE_TAG }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Validate release tag
+      - name: Validate release metadata
         id: release
         run: |
-          args=(--tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT")
-          if [ -n "$RELEASE_CHANNEL" ]; then
-              args+=(--channel "$RELEASE_CHANNEL")
+          stable_re='^v([0-9]+\.[0-9]+\.[0-9]+)$'
+          beta_re='^v([0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+)$'
+
+          if [[ "$RELEASE_TAG" =~ $stable_re ]]; then
+              version="${BASH_REMATCH[1]}"
+              channel="stable"
+              prerelease="false"
+          elif [[ "$RELEASE_TAG" =~ $beta_re ]]; then
+              version="${BASH_REMATCH[1]}"
+              channel="beta"
+              prerelease="true"
+          else
+              echo "invalid release tag '$RELEASE_TAG'; expected vX.Y.Z or vX.Y.Z-beta.N" >&2
+              exit 1
           fi
-          python scripts/check_release.py "${args[@]}"
+
+          if [ -n "$RELEASE_CHANNEL" ] \
+             && [ "$channel" != "$RELEASE_CHANNEL" ]; then
+              echo "tag $RELEASE_TAG is $channel, not $RELEASE_CHANNEL" >&2
+              exit 1
+          fi
+
+          {
+              echo "tag=$RELEASE_TAG"
+              echo "version=$version"
+              echo "channel=$channel"
+              echo "prerelease=$prerelease"
+              echo "title=$RELEASE_TAG"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: gh api --silent "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}"
+
+  validate-source:
+    name: Validate source and build archive
+    runs-on: ubuntu-latest
+    needs:
+      - validate-release-ref
+    env:
+      RELEASE_VERSION: ${{ needs.validate-release-ref.outputs.version }}
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # actions/checkout@v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: refs/tags/${{ needs.validate-release-ref.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # actions/setup-python@v6.2.0
+        with:
+          python-version: "3.13"
 
       - name: Run local validation
         run: python scripts/check_all.py
@@ -58,29 +103,72 @@ jobs:
       - name: Build source archive
         run: |
           mkdir -p dist
-          archive="dist/klipper_z_calibration-${{ steps.release.outputs.version }}.tar.gz"
+          archive="dist/klipper_z_calibration-${RELEASE_VERSION}.tar.gz"
           git archive \
               --format=tar.gz \
-              --prefix="klipper_z_calibration-${{ steps.release.outputs.version }}/" \
+              --prefix="klipper_z_calibration-${RELEASE_VERSION}/" \
               --output="$archive" \
               HEAD
 
-      - name: Create draft GitHub Release
+      - name: Upload release archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # actions/upload-artifact@v7.0.1
+        with:
+          name: release-archive
+          path: dist/klipper_z_calibration-${{ env.RELEASE_VERSION }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  draft-release:
+    name: Draft release
+    runs-on: ubuntu-latest
+    needs:
+      - validate-release-ref
+      - validate-source
+    environment: release
+    permissions:
+      contents: write
+    env:
+      PRERELEASE: ${{ needs.validate-release-ref.outputs.prerelease }}
+      RELEASE_TAG: ${{ needs.validate-release-ref.outputs.tag }}
+      RELEASE_TITLE: ${{ needs.validate-release-ref.outputs.title }}
+
+    steps:
+      - name: Download release archive
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3  # actions/download-artifact@v8.0.0
+        with:
+          name: release-archive
+          path: dist
+
+      - name: Create or update draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          PRERELEASE: ${{ steps.release.outputs.prerelease }}
-          TITLE: ${{ steps.release.outputs.title }}
-          TAG: ${{ steps.release.outputs.tag }}
         run: |
-          args=(
-              release create "$TAG"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+              release_api="repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+              release_id="$(gh api "$release_api" --jq '.id')"
+              is_draft="$(gh api "$release_api" --jq '.draft')"
+              if [ "$is_draft" != "true" ]; then
+                  echo "Release $RELEASE_TAG already exists and is not a draft" >&2
+                  exit 1
+              fi
+              gh api --method PATCH \
+                  "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+                  -F draft=true \
+                  -F prerelease="$PRERELEASE" \
+                  -F name="$RELEASE_TITLE" >/dev/null
+              gh release upload "$RELEASE_TAG" dist/*.tar.gz --clobber
+              exit 0
+          fi
+
+          create_args=(
+              release create "$RELEASE_TAG"
               dist/*.tar.gz
               --draft
               --verify-tag
-              --title "$TITLE"
+              --title "$RELEASE_TITLE"
               --generate-notes
           )
           if [ "$PRERELEASE" = "true" ]; then
-              args+=(--prerelease)
+              create_args+=(--prerelease)
           fi
-          gh "${args[@]}"
+          gh "${create_args[@]}"

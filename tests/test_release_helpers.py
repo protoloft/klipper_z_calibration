@@ -5,6 +5,7 @@
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import importlib.util
 import pathlib
+import re
 import tempfile
 import unittest
 
@@ -93,8 +94,68 @@ class MoonrakerUpdateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tempdir:
             path = pathlib.Path(tempdir) / 'moonraker.conf'
             path.write_text("[server]\nhost: 0.0.0.0\n", encoding='utf-8')
+            backup = path.with_name(path.name + '.bak')
             self.assertTrue(update_moonraker.update_config_file(path, "/repo"))
+            self.assertEqual(backup.read_text(encoding='utf-8'),
+                             "[server]\nhost: 0.0.0.0\n")
             self.assertFalse(update_moonraker.update_config_file(path, "/repo"))
+
+
+class ReleaseWorkflowTest(unittest.TestCase):
+    """Covers release workflow safety properties."""
+
+    def workflow_text(self, name='release.yml'):
+        """Return the tracked GitHub release workflow text."""
+        path = ROOT / '.github' / 'workflows' / name
+        return path.read_text(encoding='utf-8')
+
+    def workflow_texts(self):
+        """Return all tracked GitHub workflow texts keyed by file name."""
+        workflow_dir = ROOT / '.github' / 'workflows'
+        return {
+            path.name: path.read_text(encoding='utf-8')
+            for path in sorted(workflow_dir.glob('*.yml'))
+        }
+
+    def test_release_ref_is_validated_before_release_checkout(self):
+        text = self.workflow_text()
+        self.assertLess(text.index('name: Validate release ref'),
+                        text.index('name: Check out release tag'))
+        self.assertIn(
+            'ref: refs/tags/${{ needs.validate-release-ref.outputs.tag }}',
+            text)
+        self.assertIn('persist-credentials: false', text)
+        self.assertIn('permissions:\n  contents: read', text)
+
+    def test_checkout_credentials_are_not_persisted(self):
+        for name, text in self.workflow_texts().items():
+            for match in re.finditer(r'uses:\s+actions/checkout@', text):
+                next_step = text.find('\n      - name:', match.end())
+                checkout_block = text[match.end():]
+                if next_step != -1:
+                    checkout_block = text[match.end():next_step]
+                with self.subTest(workflow=name, offset=match.start()):
+                    self.assertIn('persist-credentials: false',
+                                  checkout_block)
+
+    def test_release_publish_job_does_not_checkout_source(self):
+        text = self.workflow_text()
+        draft_release = text[text.index('  draft-release:'):]
+        self.assertNotIn('actions/checkout', draft_release)
+        self.assertIn('uses: actions/download-artifact@', draft_release)
+        self.assertIn('uses: actions/upload-artifact@', text)
+        self.assertLess(text.index('uses: actions/upload-artifact@'),
+                        text.index('  draft-release:'))
+        self.assertEqual(text.count('contents: write'), 1)
+        self.assertIn('permissions:\n      contents: write', draft_release)
+
+    def test_release_workflow_updates_existing_draft_assets(self):
+        text = self.workflow_text()
+        self.assertIn('gh release view "$RELEASE_TAG"', text)
+        self.assertIn(
+            'gh release upload "$RELEASE_TAG" dist/*.tar.gz --clobber',
+            text)
+        self.assertIn('already exists and is not a draft', text)
 
 
 if __name__ == '__main__':

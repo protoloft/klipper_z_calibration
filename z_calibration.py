@@ -4,6 +4,7 @@
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
 import logging
+import math
 import os
 import sys
 
@@ -108,7 +109,9 @@ class ZCalibrationHelper:
         """Parse an `x,y` value and report errors in the caller's context."""
         try:
             x_pos, y_pos = site.split(',')
-            return [float(x_pos), float(y_pos), None]
+            return [self._parse_finite_float(x_pos),
+                    self._parse_finite_float(y_pos),
+                    None]
         except (AttributeError, TypeError, ValueError):
             if gcmd is not None:
                 raise gcmd.error("%s: unable to parse %s"
@@ -119,10 +122,17 @@ class ZCalibrationHelper:
             raise self.printer.config_error("Unable to parse %s in %s"
                                             % (name, self.name))
 
+    def _parse_finite_float(self, raw_value):
+        """Parse a float and reject NaN or infinite values."""
+        value = float(raw_value)
+        if not math.isfinite(value):
+            raise ValueError()
+        return value
+
     def _get_offset_margins(self, config, name, default):
         """Parse offset margins as symmetric or explicit min/max bounds."""
         try:
-            margins = [float(val.strip())
+            margins = [self._parse_finite_float(val.strip())
                        for val in config.get(name, default).split(',')]
             if len(margins) == 1:
                 val = abs(margins[0])
