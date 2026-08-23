@@ -17,6 +17,10 @@ class ZCalibrationHelper:
         self.config = config
         self.printer = config.get_printer()
         self.switch_offset = config.getfloat('switch_offset', None, above=0.)
+        switch_probe_modes = {'z_endstop': 'z_endstop', 'probe': 'probe'}
+        self.switch_probe_mode = config.getchoice('switch_probe_mode',
+                                                  switch_probe_modes,
+                                                  'z_endstop')
         # TODO: remove: max_deviation is deprecated
         self.max_deviation = config.getfloat('max_deviation', None, above=0.)
         config.deprecate('max_deviation')
@@ -369,23 +373,24 @@ class ZCalibrationHelper:
         return self._calc_mean(z_sorted[middle-1:middle+1])
     def _log_params(self, gcmd, switch_offset, nozzle_site, switch_site,
                     bed_site):
-        logging.info("%s: switch_offset=%.3f, offset_margins=%.3f,%.3f,"
-                     " speed=%.3f, samples=%i, tolerance=%.3f, retries=%i,"
+        logging.info("%s: switch_probe_mode=%s, switch_offset=%.3f,"
+                     " offset_margins=%.3f,%.3f, speed=%.3f, samples=%i,"
+                     " tolerance=%.3f, retries=%i,"
                      " samples_result=%s, lift_speed=%.3f, safe_z_height=%.3f,"
                      " probing_speed=%.3f, second_speed=%.3f,"
                      " retract_dist=%.3f, position_min=%.3f,"
                      " probe_nozzle_x=%.3f, probe_nozzle_y=%.3f,"
                      " probe_switch_x=%.3f, probe_switch_y=%.3f,"
                      " probe_bed_x=%.3f, probe_bed_y=%.3f"
-                     % (gcmd.get_command(), switch_offset,
-                        self.offset_margins[0], self.offset_margins[1],
-                        self.speed, self.samples, self.tolerance,
-                        self.retries, self.samples_result, self.lift_speed,
-                        self.safe_z_height, self.probing_speed,
-                        self.second_speed, self.retract_dist,
-                        self.position_min, nozzle_site[0], nozzle_site[1],
-                        switch_site[0], switch_site[1], bed_site[0],
-                        bed_site[1]))
+                     % (gcmd.get_command(), self.switch_probe_mode,
+                        switch_offset, self.offset_margins[0],
+                        self.offset_margins[1], self.speed, self.samples,
+                        self.tolerance, self.retries, self.samples_result,
+                        self.lift_speed, self.safe_z_height,
+                        self.probing_speed, self.second_speed,
+                        self.retract_dist, self.position_min,
+                        nozzle_site[0], nozzle_site[1], switch_site[0],
+                        switch_site[1], bed_site[0], bed_site[1]))
 class EndstopWrapper:
     def __init__(self, endstop):
         self.mcu_endstop = endstop
@@ -488,12 +493,7 @@ class CalibrationState:
             else:
                 self.probe.probe_session.start_probe_session(None)
             try:
-                # probe switch body
-                switch_zero = self._probe_on_site(self.z_endstop,
-                                                  switch_site,
-                                                  check_probe=True)
-                # probe bed position
-                probe_site = self._add_probe_offset(bed_site)
+                # resolve the probe endstop for switch and bed probing
                 # TODO: remove: deprecated since 2026-05-25
                 # Klipper's probe refactor nests the real MCU endstop inside
                 # ProbeEndstopWrapper, which itself no longer exposes
@@ -501,6 +501,15 @@ class CalibrationState:
                 probe_endstop = self.probe.mcu_probe
                 if not hasattr(probe_endstop, 'get_steppers'):
                     probe_endstop = probe_endstop.mcu_endstop
+                # probe switch body or trigger point
+                switch_endstop = self.z_endstop
+                if self.helper.switch_probe_mode == 'probe':
+                    switch_endstop = probe_endstop
+                switch_zero = self._probe_on_site(switch_endstop,
+                                                  switch_site,
+                                                  check_probe=True)
+                # probe bed position
+                probe_site = self._add_probe_offset(bed_site)
                 probe_zero = self._probe_on_site(probe_endstop,
                                                  probe_site,
                                                  check_probe=True)
