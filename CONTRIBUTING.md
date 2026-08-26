@@ -72,8 +72,21 @@ Run these checks before submitting a pull request:
 python3 scripts/check_all.py
 ```
 
-The check runner performs whitespace validation, shell syntax validation,
-compile checks, unit tests, and `git diff --check`.
+The check runner performs whitespace validation, shell syntax validation, a
+`ruff check .` lint step, compile checks, unit tests, and `git diff --check`.
+
+`ruff` is the only tool this repository asks you to install; there are no
+runtime or development dependencies otherwise. If it is missing, the lint step
+is skipped with a notice and CI still enforces it, so install the same pinned
+version CI uses:
+
+```bash
+python3 -m pip install ruff==0.16.4
+```
+
+The rule selection in `ruff.toml` is intentionally narrow. It looks for real
+defects such as undefined names and unused imports, not for style;
+Klipper-style formatting stays the job of `scripts/check_whitespace.py`.
 
 If you touch release helper behavior, also run:
 

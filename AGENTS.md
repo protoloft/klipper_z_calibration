@@ -4,6 +4,32 @@ This file is for automated coding agents working in this repository.
 Human contributor guidance is in `CONTRIBUTING.md`. Maintainer release steps
 are in `docs/maintainer-release.md`.
 
+It is the single source of truth for agent instructions. Claude Code does not
+read `AGENTS.md` itself, so the repository ships a `CLAUDE.md` that pulls this
+file in with an `@AGENTS.md` import. Keep the rules here; do not duplicate
+them into `CLAUDE.md`.
+
+## Safety Model
+
+This plugin drives real hardware: it moves the nozzle toward the print bed.
+The central calculation is `CalibrationRun.calibrate_z` in `z_calibration.py`:
+
+    offset = probe_zero - (switch_zero - nozzle_zero + switch_offset)
+
+A sign or term error here drives the nozzle into the bed. Changes to this
+formula or to its signs require an explicit derivation in the commit message
+and in the final response; "simplifications" without one are not acceptable.
+Bed probing is a hard invariant: it always uses the raw trigger Z (equivalent
+to `ProbeResult.test_z`), never `ProbeResult.bed_z`, which subtracts the
+configured probe `z_offset` and would shift the formula by exactly that amount.
+That reason is documented as a comment in `calibrate_z`; refer to it.
+
+## Language
+
+Everything in this repository is English: code, comments, docstrings, commit
+messages, documentation, G-Code response text, and error messages - regardless
+of the language the user speaks to the agent in.
+
 ## Project Rules
 
 `klipper_z_calibration` is a standalone Klipper/Kalico plugin for dockable
@@ -18,6 +44,15 @@ Keep these boundaries intact:
 - Do not add runtime Python modules unless the install model is intentionally
   changed.
 - Preserve support for the old Kalico external plugin mechanism.
+
+Why no extra runtime modules: `z_calibration.py` inserts the repository root at
+position 0 of `sys.path` in the live Klipper process so that
+`klipper_compat.py` resolves through the symlink. Every further import in
+`klippy` then hits the checkout first, including the standard library, so a
+root-level `probe.py`, `configfile.py`, or `queue.py` would silently take over
+that import process-wide. Position 0 is deliberate - it shadows stale
+`klipper_compat.py` copies in `klippy/extras/` that `install.sh` cannot remove
+because they are not repository symlinks - so keep root naming discipline.
 
 Unsupported probe families are out of scope unless project policy changes:
 
@@ -45,6 +80,14 @@ When adding or changing compatibility-sensitive behavior, add focused tests for
 the affected wrapper and update `scripts/check_klipper_contract.py` if a new
 upstream Klipper source contract is required.
 
+## Public Contract
+
+The config option names of the `[z_calibration]` section, the G-Code commands
+`CALIBRATE_Z`, `PROBE_Z_ACCURACY`, and `CALCULATE_SWITCH_OFFSET`, and the
+`get_status` keys `last_query` and `last_z_offset` live in other people's
+`printer.cfg` files and in Mainsail/Fluidd dashboards. They are effectively
+API; changing them requires a documented migration path.
+
 ## Formatting
 
 This repository follows Klipper-style formatting via:
@@ -62,6 +105,10 @@ Requirements include:
 - newline at end of file
 - no extra blank lines at end of file
 - no invalid control characters
+
+Target Python 3.9 (CI matrix: 3.9 and 3.13): no f-strings, no walrus operator,
+no `match` statements, no `X | Y` type unions. Klipper-style `%` formatting is
+used throughout on purpose, not by accident.
 
 Keep diffs focused. Do not perform unrelated formatting-only changes.
 
@@ -85,6 +132,19 @@ Compatibility-sensitive paths should have explicit tests for feature detection,
 old/new Klipper behavior, Kalico-specific behavior, or Moonraker behavior as
 applicable.
 
+`tests/fakes.py` is the shared fake surface for Klipper objects. Carry
+compatibility changes over into it; otherwise the tests verify a shape that no
+longer exists. Run a single test file or a single test case with:
+
+```bash
+python3 -m unittest discover -s tests -p test_z_calibration.py -v
+python3 -m unittest discover -s tests -k test_load_config_returns_helper -v
+```
+
+`tests` is only importable through `discover -s tests`, so the plain
+`python3 -m unittest tests.test_z_calibration` form fails with a
+`ModuleNotFoundError`.
+
 ## Required Validation
 
 Before considering a task complete, run:
@@ -93,10 +153,15 @@ Before considering a task complete, run:
 python3 scripts/check_all.py
 ```
 
-This runs whitespace validation, shell syntax validation, compile checks, unit
-tests, and `git diff --check`.
+This runs whitespace validation, shell syntax validation, a `ruff check .` lint
+step, compile checks, unit tests, and `git diff --check`. Without `ruff` the
+lint step is skipped with a notice; install the pinned version CI uses with
+`python3 -m pip install ruff==0.16.4`. Its rules live in `ruff.toml` and are
+deliberately narrow (`E9`, `F`): real defects only, no style opinions.
 
-If release helper behavior changed, also run:
+`scripts/check_release.py` is the single source of truth for release tag
+classification; the `Release` workflow calls it instead of reimplementing the
+rules. If release helper behavior changed, also run:
 
 ```bash
 python3 scripts/check_release.py --tag v1.2.3 --channel stable
@@ -111,16 +176,11 @@ python3 scripts/check_klipper_contract.py --klipper-path ~/klipper
 ```
 
 To clone or update ignored local Klipper/Kalico checkouts and run all firmware
-contract checks:
+contract checks, use the first form; once those checkouts exist, the second
+form runs the same checks without network access:
 
 ```bash
 python3 scripts/check_firmware_compat.py
-```
-
-After the ignored checkouts exist, use the offline form when network access is
-not needed:
-
-```bash
 python3 scripts/check_firmware_compat.py --no-update
 ```
 
