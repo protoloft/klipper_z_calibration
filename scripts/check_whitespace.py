@@ -9,13 +9,23 @@ import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+# Tool output that .gitignore already excludes. It is not part of the
+# repository, and a binary artifact such as .coverage would otherwise fail the
+# UTF-8 check and block an unrelated task.
 EXCLUDED_DIRS = {
     '.compat_repos',
     '.git',
     '.mypy_cache',
     '.pytest_cache',
     '.ruff_cache',
+    '.venv',
     '__pycache__',
+    'env',
+    'htmlcov',
+    'venv',
+}
+EXCLUDED_NAMES = {
+    '.coverage',
 }
 SKIP_SUFFIXES = {
     '.gif',
@@ -34,6 +44,8 @@ def iter_files():
             continue
         relpath = path.relative_to(ROOT)
         if any(part in EXCLUDED_DIRS for part in relpath.parts):
+            continue
+        if path.name in EXCLUDED_NAMES:
             continue
         if path.suffix.lower() in SKIP_SUFFIXES:
             continue
