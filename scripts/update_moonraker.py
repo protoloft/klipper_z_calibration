@@ -14,6 +14,15 @@ import tempfile
 SECTION_RE = re.compile(r'^\[update_manager(?:\s+[^\]]*)?\s+z_calibration\]$')
 ANY_SECTION_RE = re.compile(r'^\[[^\]]+\]$')
 
+# Backups are kept, never overwritten. The first changing run writes
+# "<config>.bak", every later one "<config>.bak.001", ".002" and so on.
+# Zero padding keeps the names sortable in the same order they were made.
+MAX_BACKUPS = 20
+
+
+class BackupError(Exception):
+    """Raised when no unused backup slot is left for a config file."""
+
 
 def _find_section(lines):
     """Return the start/end indexes for the z_calibration updater section."""
@@ -82,9 +91,30 @@ def update_config_file(path, repo_path):
     return changed
 
 
-def write_config_atomically(config_path, original, updated):
-    """Back up the current config, then atomically replace it."""
-    backup_path = config_path.with_name(config_path.name + '.bak')
+def next_backup_path(config_path, max_backups=MAX_BACKUPS):
+    """Return the first unused backup path for a config file."""
+    candidate = config_path.with_name(config_path.name + '.bak')
+    if not candidate.exists():
+        return candidate
+    for index in range(1, max_backups):
+        candidate = config_path.with_name(
+            '%s.bak.%03d' % (config_path.name, index))
+        if not candidate.exists():
+            return candidate
+    raise BackupError(
+        "%s: all %d backup slots are in use (%s.bak, %s.bak.001, ...). "
+        "Remove or archive the old backups and run again."
+        % (config_path, max_backups, config_path.name, config_path.name))
+
+
+def write_config_atomically(config_path, original, updated,
+                            max_backups=MAX_BACKUPS):
+    """Back up the current config, then atomically replace it.
+
+    The backup goes to a new slot every time; an existing backup of an
+    earlier state is never overwritten.
+    """
+    backup_path = next_backup_path(config_path, max_backups)
     backup_path.write_text(original, encoding='utf-8')
     mode = config_path.stat().st_mode
     tmp_path = None
@@ -109,7 +139,11 @@ def main():
     if len(sys.argv) != 3:
         sys.stderr.write("Usage: update_moonraker.py <config> <repo-path>\n")
         return 2
-    changed = update_config_file(sys.argv[1], sys.argv[2])
+    try:
+        changed = update_config_file(sys.argv[1], sys.argv[2])
+    except BackupError as error:
+        sys.stderr.write("Error: %s\n" % (error,))
+        return 1
     if changed:
         sys.stdout.write("changed\n")
     else:

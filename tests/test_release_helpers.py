@@ -101,6 +101,53 @@ class MoonrakerUpdateTest(unittest.TestCase):
             self.assertFalse(update_moonraker.update_config_file(path, "/repo"))
 
 
+    def test_second_changing_run_keeps_the_first_backup(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = pathlib.Path(tempdir) / 'moonraker.conf'
+            first_state = "[server]\nhost: 0.0.0.0\n"
+            path.write_text(first_state, encoding='utf-8')
+            self.assertTrue(update_moonraker.update_config_file(path, "/repo"))
+            second_state = path.read_text(encoding='utf-8')
+            # Drop the migrated channel again so the next run also changes
+            # the file.
+            path.write_text(second_state.replace("channel: stable\n", ""),
+                            encoding='utf-8')
+            second_state = path.read_text(encoding='utf-8')
+            self.assertTrue(update_moonraker.update_config_file(path, "/repo"))
+            first_backup = path.with_name(path.name + '.bak')
+            second_backup = path.with_name(path.name + '.bak.001')
+            self.assertEqual(first_backup.read_text(encoding='utf-8'),
+                             first_state)
+            self.assertEqual(second_backup.read_text(encoding='utf-8'),
+                             second_state)
+            self.assertIn("channel: stable",
+                          path.read_text(encoding='utf-8'))
+
+    def test_backup_names_sort_in_creation_order(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = pathlib.Path(tempdir) / 'moonraker.conf'
+            created = []
+            for index in range(4):
+                backup = update_moonraker.next_backup_path(path)
+                backup.write_text("%d\n" % (index,), encoding='utf-8')
+                created.append(backup.name)
+            self.assertEqual(
+                created,
+                ['moonraker.conf.bak', 'moonraker.conf.bak.001',
+                 'moonraker.conf.bak.002', 'moonraker.conf.bak.003'])
+            self.assertEqual(sorted(created), created)
+
+    def test_exhausted_backup_slots_leave_the_config_untouched(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = pathlib.Path(tempdir) / 'moonraker.conf'
+            original = "[server]\nhost: 0.0.0.0\n"
+            path.write_text(original, encoding='utf-8')
+            for _ in range(update_moonraker.MAX_BACKUPS):
+                update_moonraker.next_backup_path(path).write_text(
+                    "old\n", encoding='utf-8')
+            with self.assertRaises(update_moonraker.BackupError):
+                update_moonraker.update_config_file(path, "/repo")
+            self.assertEqual(path.read_text(encoding='utf-8'), original)
 class ReleaseWorkflowTest(unittest.TestCase):
     """Covers release workflow safety properties."""
 

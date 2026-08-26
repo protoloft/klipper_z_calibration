@@ -120,9 +120,63 @@ class InstallScriptTest(unittest.TestCase):
                 result = run_bash(
                     "check_klipper(){ echo bad_service_check; }\n"
                     "main -n %s\n" % (q(value),))
-                self.assertNotEqual(result.returncode, 0)
+                # Exit code 1, not the 255 that "exit -1" used to produce.
+                self.assertEqual(result.returncode, 1, result.stderr)
                 self.assertIn("-n must be a positive integer", result.stdout)
                 self.assertNotIn("bad_service_check", result.stdout)
+
+    def test_missing_moonraker_config_exits_with_code_one(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            missing = pathlib.Path(tempdir) / 'moonraker.conf'
+            result = run_bash(
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_CONFIG_CUSTOM=1\n"
+                "resolve_moonraker_config\n" % (q(missing),))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("Moonraker configuration not found", result.stdout)
+
+    def test_error_paths_do_not_use_negative_exit_codes(self):
+        text = INSTALL_SH.read_text(encoding='utf-8')
+        self.assertNotIn("exit -", text)
+
+    def test_helper_functions_do_not_leak_locals(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink(ROOT / 'z_calibration.py',
+                       extras / 'z_calibration.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "is_repo_link %s %s\n"
+                "printf 'rc=%%s\\n' \"$?\"\n"
+                "remove_file_if_present %s\n"
+                "printf 'link_path=[%%s]\\n' \"${link_path-unset}\"\n"
+                "printf 'target_path=[%%s]\\n' \"${target_path-unset}\"\n"
+                "printf 'file_path=[%%s]\\n' \"${file_path-unset}\"\n"
+                % (q(klipper), q(extras / 'z_calibration.py'),
+                   q(ROOT / 'z_calibration.py'),
+                   q(extras / 'z_calibration.pyc')))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("rc=0", result.stdout)
+            self.assertIn("link_path=[unset]", result.stdout)
+            self.assertIn("target_path=[unset]", result.stdout)
+            self.assertIn("file_path=[unset]", result.stdout)
+
+    def test_is_repo_link_reports_foreign_links_as_false(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink('/somewhere/else/z_calibration.py',
+                       extras / 'z_calibration.py')
+            result = run_bash(
+                "set_install_paths\n"
+                "if is_repo_link %s %s; then echo owned;"
+                " else echo foreign; fi\n"
+                % (q(extras / 'z_calibration.py'),
+                   q(ROOT / 'z_calibration.py')))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("foreign", result.stdout)
 
     def test_default_moonraker_config_falls_back_to_old_path(self):
         with tempfile.TemporaryDirectory() as tempdir:

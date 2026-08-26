@@ -27,15 +27,15 @@ set_install_paths()
 
 is_repo_link()
 {
-    link_path="$1"
-    target_path="$2"
+    local link_path="$1"
+    local target_path="$2"
     [ -L "$link_path" ] && [ "$(readlink "$link_path")" = "$target_path" ]
 }
 
 remove_repo_link()
 {
-    link_path="$1"
-    target_path="$2"
+    local link_path="$1"
+    local target_path="$2"
     if is_repo_link "$link_path" "$target_path"; then
         rm -f "$link_path"
     fi
@@ -43,7 +43,7 @@ remove_repo_link()
 
 remove_file_if_present()
 {
-    file_path="$1"
+    local file_path="$1"
     if [ -e "$file_path" ] || [ -L "$file_path" ]; then
         rm -f "$file_path"
     fi
@@ -56,7 +56,7 @@ validate_num_installs()
     fi
     if [[ ! "$NUM_INSTALLS" =~ ^[1-9][0-9]*$ ]]; then
         echo "Error: -n must be a positive integer"
-        exit -1
+        exit 1
     fi
 }
 
@@ -67,7 +67,7 @@ verify_ready()
     # check for root user
     if [ "$EUID" -eq 0 ]; then
         echo "This script must not run as root"
-        exit -1
+        exit 1
     fi
     # output used number of installs
     if [[ $NUM_INSTALLS == 0 ]]; then
@@ -85,15 +85,16 @@ check_klipper()
             echo "Klipper service found!"
         else
             echo "Klipper service not found, please install Klipper first"
-            exit -1
+            exit 1
         fi
     else
+        local klip
         for (( klip = 1; klip<=$NUM_INSTALLS; klip++ )); do
             if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper-$klip.service")" ]; then
                 echo "klipper-$klip.service found!"
             else
                 echo "klipper-$klip.service NOT found, please ensure you've entered the correct number of klipper instances you're running!"
-                exit -1
+                exit 1
             fi
         done
     fi
@@ -117,7 +118,7 @@ resolve_moonraker_config()
     else
         echo "Error: Moonraker configuration not found: ${MOONRAKER_CONFIG}. Exiting.."
     fi
-    exit -1
+    exit 1
 }
 
 # Step 3: Check folders
@@ -125,7 +126,7 @@ check_klipper_path()
 {
     if [ ! -d "${KLIPPER_PATH}/klippy/extras/" ]; then
         echo "Error: Klipper not found in directory: ${KLIPPER_PATH}. Exiting.."
-        exit -1
+        exit 1
     fi
     echo "Klipper found at ${KLIPPER_PATH}"
 }
@@ -174,6 +175,9 @@ link_extension()
 add_updater()
 {
     echo -n "Adding update manager to moonraker.conf... "
+    # Declared separately: "local x=$(cmd)" would report the exit status of
+    # "local" and hide a failing command substitution from "set -e".
+    local update_result
     update_result=$(python3 \
         "${SRCDIR}/scripts/update_moonraker.py" \
         "$MOONRAKER_CONFIG" \
@@ -197,6 +201,7 @@ restart_klipper()
         sudo systemctl restart klipper
         echo "[OK]"
     else
+        local klip
         for (( klip = 1; klip<=$NUM_INSTALLS; klip++)); do
             echo -n "Restarting Klipper-$klip... "
             sudo systemctl restart klipper-$klip
@@ -246,6 +251,7 @@ main()
     UNINSTALL=""
     MOONRAKER_CONFIG_CUSTOM=0
     NUM_INSTALLS_CUSTOM=0
+    local OPTION
     while getopts ":k:m:n:uh" OPTION; do
         case "$OPTION" in
             k) KLIPPER_PATH="$OPTARG" ;;
