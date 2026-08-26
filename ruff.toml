@@ -1,0 +1,41 @@
+# Ruff configuration for klipper_z_calibration.
+#
+# This lives in ruff.toml and not in pyproject.toml on purpose: the repository
+# has no runtime and no development dependencies and is not a Python package,
+# so a pyproject.toml would wrongly suggest packaging.
+#
+# The rule selection is deliberately conservative. The point of this linter is
+# to find real defects in code that CI never executes against hardware - above
+# all the legacy fallbacks in klipper_compat.py, where an undefined name or a
+# stale import would only surface on a user's printer. It is not here to teach
+# style; Klipper-style formatting is enforced by scripts/check_whitespace.py.
+
+target-version = "py39"  # oldest supported interpreter (CI: 3.9 and 3.13)
+line-length = 80  # same limit scripts/check_whitespace.py enforces
+
+extend-exclude = [
+    ".compat_repos",  # cloned Klipper/Kalico checkouts, not our code
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+]
+
+[lint]
+# F  - pyflakes: undefined names, unused imports, unused variables, broken
+#      format strings, redefinitions. This is the reason ruff is here.
+# E9 - pycodestyle errors that are actual breakage: syntax and IO errors.
+select = ["E9", "F"]
+
+# E501 (line too long) is not part of the selection above and must stay out:
+# scripts/check_whitespace.py already reports lines over 80 characters for .py
+# files, and a second report of the same violation is pure noise. It is listed
+# explicitly so that widening "select" later cannot reintroduce it silently.
+ignore = ["E501"]
+
+# Deliberately NOT enabled:
+# - UP (pyupgrade): would push "%" formatting toward f-strings and toward
+#   syntax that the Python 3.9 baseline does not allow.
+# - E4 (E402): z_calibration.py imports klipper_compat only after inserting
+#   the repository root into sys.path; that order is required, see AGENTS.md.
+# - B, C4, PL, SIM and friends: design and style opinions, not defects.
