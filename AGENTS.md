@@ -71,6 +71,7 @@ Examples include:
 
 - event and object lookup assumptions
 - homing/probing APIs
+- kinematics rail, carriage, and endstop naming assumptions
 - probe session APIs
 - bed mesh internals
 - toolhead status access

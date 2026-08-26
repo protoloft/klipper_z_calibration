@@ -16,6 +16,13 @@ _PROBING_ENDSTOP_METHODS = [
     'query_endstop',
 ]
 
+# Index of the Z axis in Klipper's kinematic axis order.
+_Z_AXIS = 2
+
+# Endstop names registered by rails that home the Z axis. Klipper registers
+# the section name ('stepper_z'), older Klipper and Kalico the short name.
+_Z_ENDSTOP_NAMES = ['stepper_z', 'z']
+
 
 def _missing_probing_endstop_methods(endstop):
     """Return MCU endstop methods missing from a probing target."""
@@ -56,6 +63,10 @@ class PrinterObjectCompat:
     def lookup_toolhead(self):
         """Return the required toolhead object."""
         return self.printer.lookup_object('toolhead')
+
+    def lookup_optional_toolhead(self):
+        """Return the toolhead object when it is already created."""
+        return self.printer.lookup_object('toolhead', default=None)
 
     def lookup_probe(self):
         """Return the required probe object."""
@@ -296,18 +307,69 @@ class HomingCompat:
 
     def get_z_endstop(self, query_endstops, section_name):
         """Find and wrap the physical Z calibration endstop."""
-        z_endstop = None
+        endstop = self._find_carriage_z_endstop()
+        if endstop is None:
+            endstop = self._find_named_z_endstop(query_endstops)
+        if endstop is None:
+            raise self.printer.config_error(
+                "No z-endstop found for %s (registered endstops: %s)"
+                % (section_name, self._endstop_names(query_endstops)))
+        if not isinstance(endstop, MCU_endstop):
+            raise self.printer.config_error(
+                "A virtual endstop for z is not supported for %s"
+                % (section_name,))
+        return EndstopWrapper(endstop)
+
+    def _find_named_z_endstop(self, query_endstops):
+        """Return the endstop registered under a Z stepper name."""
+        found = None
         for endstop, name in query_endstops.endstops:
-            if name == 'stepper_z' or name == 'z':
-                if not isinstance(endstop, MCU_endstop):
-                    raise self.printer.config_error(
-                        "A virtual endstop for z is not supported for %s"
-                        % (section_name,))
-                z_endstop = EndstopWrapper(endstop)
-        if z_endstop is None:
-            raise self.printer.config_error("No z-endstop found for %s"
-                                            % (section_name,))
-        return z_endstop
+            if name in _Z_ENDSTOP_NAMES:
+                found = endstop
+        return found
+
+    def _find_carriage_z_endstop(self):
+        """Return the Z endstop of a kinematic carriage, if there is one."""
+        # generic_cartesian builds the Z axis from a '[carriage z]' section
+        # instead of '[stepper_z]'. Its rail registers the endstop under the
+        # carriage section name, so the name scan cannot find it. Carriages
+        # can also be named freely and pick their axis with 'axis:', which is
+        # why the axis is asked for instead of matching names again.
+        for carriage in self._get_carriages():
+            get_axis = getattr(carriage, 'get_axis', None)
+            get_rail = getattr(carriage, 'get_rail', None)
+            if get_axis is None or get_rail is None:
+                continue
+            if get_axis() != _Z_AXIS:
+                continue
+            get_endstops = getattr(get_rail(), 'get_endstops', None)
+            if get_endstops is None:
+                continue
+            # Index 0 is the endstop of the carriage itself. Endstops of
+            # extra carriages follow it, just like the additional endstops
+            # of 'stepper_z1' and 'stepper_z2' do on a classic Z rail.
+            endstops = get_endstops()
+            if endstops:
+                return endstops[0][0]
+        return None
+
+    def _get_carriages(self):
+        """Return kinematic carriages when the kinematics exposes them."""
+        toolhead = self.objects.lookup_optional_toolhead()
+        get_kinematics = getattr(toolhead, 'get_kinematics', None)
+        if get_kinematics is None:
+            return []
+        # Classic kinematics expose rails and no carriages at all, so this
+        # stays empty for them and the name scan keeps deciding.
+        carriages = getattr(get_kinematics(), 'primary_carriages', None)
+        if carriages is None:
+            return []
+        return list(carriages)
+
+    def _endstop_names(self, query_endstops):
+        """Return the registered endstop names for error messages."""
+        names = [name for _endstop, name in query_endstops.endstops]
+        return ', '.join(names) or 'none'
 
     def get_z_rail_settings(self, rail):
         """Extract Z rail homing settings from a Klipper rail object."""

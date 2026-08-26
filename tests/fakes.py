@@ -245,6 +245,10 @@ class FakeToolhead:
         self.position = [0.0, 0.0, 10.0, 0.0]
         self.homed_axes = 'xyz'
         self.moves = []
+        self.kinematics = FakeKinematics()
+
+    def get_kinematics(self):
+        return self.kinematics
 
     def get_position(self):
         return list(self.position)
@@ -531,3 +535,45 @@ class FakeInactiveRail(FakeRail):
 
     def get_steppers(self):
         return [FakeInactiveStepper()]
+
+
+class FakeCarriageRail(FakeRail):
+    """Carriage rail of the generic_cartesian kinematics.
+
+    It serves both the homing settings of the home_rails_end event and the
+    endstops registered for the carriage, like GenericPrinterRail does.
+    """
+
+    def __init__(self, endstops=None):
+        self.endstops = list(endstops or [])
+
+    def get_endstops(self):
+        return list(self.endstops)
+
+
+class FakeCarriage:
+    """Kinematic carriage that reports its axis and rail."""
+
+    def __init__(self, axis, rail):
+        self.axis = axis
+        self.rail = rail
+
+    def get_axis(self):
+        return self.axis
+
+    def get_rail(self):
+        return self.rail
+
+
+class FakeKinematics:
+    """Classic kinematics exposing rails instead of carriages."""
+
+    def __init__(self, rails=None):
+        self.rails = list(rails or [])
+
+
+class FakeGenericCartesianKinematics:
+    """Kinematics that resolves axes through primary carriages."""
+
+    def __init__(self, carriages=None):
+        self.primary_carriages = list(carriages or [])

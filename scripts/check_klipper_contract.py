@@ -18,6 +18,8 @@ class ContractError(Exception):
 
 PROFILE_VALIDATORS = []
 
+GENERIC_CARTESIAN_PATH = 'klippy/kinematics/generic_cartesian.py'
+
 
 def probe_profile(name):
     """Register a supported probe compatibility profile validator."""
@@ -69,6 +71,26 @@ def has_function(tree, function_name):
     """Return whether an AST contains a function definition."""
     return any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
                and node.name == function_name for node in ast.walk(tree))
+
+
+def function_calls(tree, class_name, function_name, callee_name):
+    """Return whether a method calls a named function or method."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for child in node.body:
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if child.name != function_name:
+                continue
+            for call in ast.walk(child):
+                if not isinstance(call, ast.Call):
+                    continue
+                func = call.func
+                name = getattr(func, 'attr', None) or getattr(func, 'id', None)
+                if name == callee_name:
+                    return True
+    return False
 
 
 def class_has_function(tree, class_name, function_name):
@@ -224,6 +246,38 @@ def validate_mcu(root, errors):
     require(has_class(tree, 'MCU_endstop'), 'MCU_endstop not found', errors)
 
 
+def validate_generic_cartesian(root, errors):
+    """Validate source markers for generic_cartesian Z endstop lookup."""
+    # generic_cartesian is newer than the supported Klipper baseline and does
+    # not exist in Kalico, so a missing kinematic file is not a failure. The
+    # carriage lookup only has to hold where the kinematics is available.
+    if not (pathlib.Path(root) / GENERIC_CARTESIAN_PATH).is_file():
+        return
+    source, tree = read_source(root, GENERIC_CARTESIAN_PATH)
+    require(class_has_function(tree, 'MainCarriage', 'get_axis'),
+            'MainCarriage.get_axis not found', errors)
+    require(class_has_function(tree, 'MainCarriage', 'get_rail'),
+            'MainCarriage.get_rail not found', errors)
+    # The Z carriage is picked by axis index, so the axis order is part of
+    # the contract. A reordered list would silently select another axis.
+    require("VALID_AXES = ['x', 'y', 'z']" in source,
+            'kinematics VALID_AXES order not found', errors)
+    # Match the attribute, not the local variable of the same name, so that
+    # a renamed attribute is not covered by the loader internals.
+    require('self.primary_carriages' in source,
+            'kinematics primary_carriages not found', errors)
+    _stepper_source, stepper_tree = read_source(root, 'klippy/stepper.py')
+    require(class_has_function(stepper_tree, 'GenericPrinterRail',
+                               'get_endstops'),
+            'rail get_endstops not found', errors)
+    # The carriage registers its own endstop in __init__, before any stepper
+    # or extra carriage can append one. Only that makes the first rail
+    # endstop the primary Z endstop, which is what the lookup returns.
+    require(function_calls(stepper_tree, 'GenericPrinterRail', '__init__',
+                           'lookup_endstop'),
+            'rail primary endstop registration not found', errors)
+
+
 def validate_gcode_macro(root, errors):
     """Validate source markers for configured G-Code template hooks."""
     source, tree = read_source(root, 'klippy/extras/gcode_macro.py')
@@ -243,6 +297,7 @@ def validate_baseline(root):
         validate_bed_mesh(root, errors)
         validate_mcu(root, errors)
         validate_gcode_macro(root, errors)
+        validate_generic_cartesian(root, errors)
     except ContractError as err:
         errors.append(str(err))
     return errors

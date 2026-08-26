@@ -54,6 +54,8 @@ Supported:
 
 - Klipper installations using `klippy/extras`
 - Kalico installations using the external plugin mechanism in `klippy/plugins`
+- Classic kinematics with a `[stepper_z]` endstop and Klipper's
+  `generic_cartesian` kinematics with a Z carriage endstop
 - Dockable contact probes such as Klicky-style probes
 - Moonraker Update Manager installs
 

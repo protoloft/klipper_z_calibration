@@ -8,11 +8,12 @@ import sys
 import types
 import unittest
 
-from fakes import FakeConfig, FakeEmptyProbeSession, FakeError
-from fakes import FakeGcmd, FakeInactiveRail, FakeLegacyProbe
-from fakes import FakeMCUEndstop, FakeOldProbe, FakePrinter
-from fakes import FakeProbe, FakeProbeSession, FakeProbeWithProbeSession
-from fakes import FakeRail, ProbeResult
+from fakes import FakeCarriage, FakeCarriageRail, FakeConfig
+from fakes import FakeEmptyProbeSession, FakeError, FakeGcmd
+from fakes import FakeGenericCartesianKinematics, FakeInactiveRail
+from fakes import FakeLegacyProbe, FakeMCUEndstop, FakeOldProbe
+from fakes import FakePrinter, FakeProbe, FakeProbeSession
+from fakes import FakeProbeWithProbeSession, FakeRail, ProbeResult
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -237,6 +238,26 @@ class ZCalibrationTest(unittest.TestCase):
         helper = z_calibration.ZCalibrationHelper(config)
         with self.assertRaisesRegex(FakeError, 'No z-endstop found'):
             helper.handle_connect()
+
+    def test_handle_connect_finds_generic_cartesian_z_endstop(self):
+        # generic_cartesian registers the endstop of the '[carriage z]'
+        # section, so startup must not depend on a 'stepper_z' name.
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.toolhead.kinematics = FakeGenericCartesianKinematics(
+            [FakeCarriage(2, FakeCarriageRail([(endstop, 'carriage z')]))])
+        printer.query_endstops.endstops = [(endstop, 'carriage z')]
+        config = FakeConfig(printer)
+        helper = z_calibration.ZCalibrationHelper(config)
+        helper.handle_connect()
+        self.assertIs(helper.z_endstop.mcu_endstop, endstop)
+
+    def test_handle_home_rails_end_reads_carriage_rails(self):
+        helper, _printer = make_helper()
+        helper.z_homing = None
+        helper.handle_home_rails_end(None, [FakeCarriageRail()])
+        self.assertEqual(helper.z_homing, 0.0)
+        self.assertEqual(helper.position_z_endstop, 0.0)
 
     def test_handle_connect_rejects_virtual_z_endstop(self):
         printer = FakePrinter()

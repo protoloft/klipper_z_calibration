@@ -8,9 +8,10 @@ import sys
 import types
 import unittest
 
-from fakes import FakeConfig, FakeError, FakeLegacyProbe, FakeMCUEndstop
-from fakes import FakeOldDefaultsProbe, FakePrinter, FakeProbe
-from fakes import FakeRecordingMCUEndstop, FakeTemplate
+from fakes import FakeCarriage, FakeCarriageRail, FakeConfig, FakeError
+from fakes import FakeGenericCartesianKinematics, FakeLegacyProbe
+from fakes import FakeMCUEndstop, FakeOldDefaultsProbe, FakePrinter
+from fakes import FakeProbe, FakeRecordingMCUEndstop, FakeTemplate
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -73,10 +74,17 @@ class PrinterObjectCompatTest(unittest.TestCase):
     def test_lookup_optional_objects_returns_none_when_absent(self):
         printer = FakePrinter()
         printer.objects.pop('probe')
+        printer.objects.pop('toolhead')
         compat = klipper_compat.PrinterObjectCompat(printer)
         self.assertIsNone(compat.lookup_optional_probe())
+        self.assertIsNone(compat.lookup_optional_toolhead())
         self.assertIsNone(compat.lookup_safe_z_home())
         self.assertIsNone(compat.lookup_bed_mesh())
+
+    def test_lookup_optional_toolhead_returns_the_toolhead(self):
+        printer = FakePrinter()
+        compat = klipper_compat.PrinterObjectCompat(printer)
+        self.assertIs(compat.lookup_optional_toolhead(), printer.toolhead)
 
     def test_lookup_required_probe_keeps_printer_error_behavior(self):
         printer = FakePrinter()
@@ -300,6 +308,165 @@ class EndstopWrapperTest(unittest.TestCase):
         z_endstop = compat.get_z_endstop(printer.query_endstops,
                                          'z_calibration')
         self.assertIs(z_endstop.get_steppers(), endstop.steppers)
+
+
+class HomingCompatZEndstopTest(unittest.TestCase):
+    """Covers Z calibration endstop discovery across kinematics."""
+
+    # Klipper registers the Z endstop under the section name of the rail
+    # that homes Z. Classic kinematics use '[stepper_z]', generic_cartesian
+    # uses a '[carriage z]' section that may also be named freely.
+    def setup_carriages(self, printer, z_endstops, z_axis=2):
+        """Give the fake toolhead a generic_cartesian Z carriage."""
+        x_rail = FakeCarriageRail([(FakeMCUEndstop(), 'carriage x')])
+        z_rail = FakeCarriageRail(z_endstops)
+        printer.toolhead.kinematics = FakeGenericCartesianKinematics(
+            [FakeCarriage(0, x_rail), FakeCarriage(z_axis, z_rail)])
+        return z_rail
+
+    def get_z_endstop(self, printer):
+        """Run the endstop lookup the way handle_connect() does."""
+        compat = klipper_compat.HomingCompat(printer)
+        return compat.get_z_endstop(printer.query_endstops, 'z_calibration')
+
+    def test_carriage_z_endstop_is_found(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        self.setup_carriages(printer, [(endstop, 'carriage z')])
+        printer.query_endstops.endstops = [(endstop, 'carriage z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_freely_named_z_carriage_is_found(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        self.setup_carriages(printer, [(endstop, 'carriage my_z')])
+        printer.query_endstops.endstops = [(endstop, 'carriage my_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_carriage_endstop_wins_over_a_matching_name(self):
+        # An extra carriage can register the name 'z' without being the
+        # endstop that homes the Z carriage.
+        printer = FakePrinter()
+        carriage_endstop = FakeMCUEndstop()
+        extra_endstop = FakeMCUEndstop()
+        self.setup_carriages(printer, [(carriage_endstop, 'carriage my_z')])
+        printer.query_endstops.endstops = [
+            (carriage_endstop, 'carriage my_z'),
+            (extra_endstop, 'z'),
+        ]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop,
+                      carriage_endstop)
+
+    def test_first_carriage_endstop_is_used(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        extra_endstop = FakeMCUEndstop()
+        self.setup_carriages(printer, [(endstop, 'carriage z'),
+                                       (extra_endstop, 'z1')])
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_virtual_carriage_endstop_is_rejected(self):
+        printer = FakePrinter()
+        self.setup_carriages(printer, [(object(), 'carriage z')])
+        with self.assertRaisesRegex(FakeError, 'virtual endstop'):
+            self.get_z_endstop(printer)
+
+    def test_carriage_without_endstops_falls_back_to_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        self.setup_carriages(printer, [])
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_kinematics_without_carriages_uses_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_toolhead_without_kinematics_uses_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.objects['toolhead'] = types.SimpleNamespace()
+        printer.query_endstops.endstops = [(endstop, 'z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_missing_toolhead_uses_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.objects.pop('toolhead')
+        printer.query_endstops.endstops = [(endstop, 'z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_carriage_without_the_axis_api_uses_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.toolhead.kinematics = FakeGenericCartesianKinematics(
+            [object()])
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_rail_without_the_endstop_api_uses_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.toolhead.kinematics = FakeGenericCartesianKinematics(
+            [FakeCarriage(2, object())])
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_empty_primary_carriages_uses_the_name(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.toolhead.kinematics = types.SimpleNamespace(
+            primary_carriages=None)
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_only_primary_carriages_are_used(self):
+        # Extra and dual carriages are not primary carriages, and reading
+        # the carriage mapping instead would iterate carriage names.
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        rail = FakeCarriageRail([(FakeMCUEndstop(), 'carriage z')])
+        printer.toolhead.kinematics = types.SimpleNamespace(
+            carriages={'z': FakeCarriage(2, rail)})
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, endstop)
+
+    def test_missing_z_endstop_reports_the_registered_names(self):
+        printer = FakePrinter()
+        self.setup_carriages(printer, [(FakeMCUEndstop(), 'carriage x')],
+                             z_axis=1)
+        printer.query_endstops.endstops = [(FakeMCUEndstop(), 'carriage x'),
+                                           (FakeMCUEndstop(), 'carriage y')]
+        with self.assertRaisesRegex(
+                FakeError,
+                r'No z-endstop found for z_calibration'
+                r' \(registered endstops: carriage x, carriage y\)'):
+            self.get_z_endstop(printer)
+
+    def test_missing_z_endstop_without_any_endstop(self):
+        printer = FakePrinter()
+        printer.query_endstops.endstops = []
+        with self.assertRaisesRegex(FakeError, 'registered endstops: none'):
+            self.get_z_endstop(printer)
+
+
+class HomingCompatRailSettingsTest(unittest.TestCase):
+    """Covers Z rail settings read during the home_rails_end event."""
+
+    def test_carriage_rail_settings_are_read(self):
+        # generic_cartesian homes carriage rails, so the same settings the
+        # classic Z rail provides have to be readable from them.
+        compat = klipper_compat.HomingCompat(FakePrinter())
+        settings = compat.get_z_rail_settings(FakeCarriageRail())
+        self.assertEqual(settings, {
+            'position_endstop': 0.0,
+            'homing_speed': 6.0,
+            'second_homing_speed': 2.0,
+            'homing_retract_dist': 1.0,
+            'position_min': -2.0,
+        })
 
 
 class RunGcodeTemplateTest(unittest.TestCase):

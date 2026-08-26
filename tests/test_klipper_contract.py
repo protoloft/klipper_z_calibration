@@ -29,7 +29,8 @@ class KlipperContractTest(unittest.TestCase):
 
     def make_tree(self, probe_source=None, homing_source=None,
                   bed_mesh_source=None, mcu_source=None,
-                  gcode_macro_source=None, manual_probe_source='default'):
+                  gcode_macro_source=None, manual_probe_source='default',
+                  generic_cartesian_source=None, stepper_source=None):
         """Create a temporary synthetic Klipper source tree."""
         tempdir = tempfile.TemporaryDirectory()
         root = pathlib.Path(tempdir.name)
@@ -58,7 +59,39 @@ class KlipperContractTest(unittest.TestCase):
         (root / 'klippy' / 'extras' / 'gcode_macro.py').write_text(
             gcode_macro_source or self.valid_gcode_macro_source(),
             encoding='utf-8')
+        if generic_cartesian_source is not None:
+            (root / 'klippy' / 'kinematics').mkdir(parents=True)
+            (root / 'klippy' / 'kinematics'
+             / 'generic_cartesian.py').write_text(generic_cartesian_source,
+                                                  encoding='utf-8')
+            (root / 'klippy' / 'stepper.py').write_text(
+                stepper_source or self.valid_stepper_source(),
+                encoding='utf-8')
         return tempdir, root
+
+    def valid_generic_cartesian_source(self):
+        """Return source for the supported generic_cartesian kinematics."""
+        return (
+            "VALID_AXES = ['x', 'y', 'z']\n"
+            "class MainCarriage:\n"
+            "    def get_axis(self):\n"
+            "        return self.axis\n"
+            "    def get_rail(self):\n"
+            "        return self.rail\n"
+            "class GenericCartesianKinematics:\n"
+            "    def _load_kinematics(self, config):\n"
+            "        primary_carriages = []\n"
+            "        self.primary_carriages = primary_carriages\n")
+
+    def valid_stepper_source(self):
+        """Return source for a rail exposing its registered endstops."""
+        return (
+            "class GenericPrinterRail:\n"
+            "    def __init__(self, config):\n"
+            "        self.endstops = []\n"
+            "        self.lookup_endstop(self.endstop_pin, self.name)\n"
+            "    def get_endstops(self):\n"
+            "        return list(self.endstops)\n")
 
     def valid_probe_source(self):
         """Return source for a modern supported probe profile."""
@@ -222,6 +255,76 @@ class KlipperContractTest(unittest.TestCase):
             gcode_macro_source=self.valid_kalico_gcode_macro_source())
         with tempdir:
             self.assertEqual(check_contract.check_klipper_contract(root), [])
+
+    def test_missing_generic_cartesian_passes(self):
+        # Older Klipper and Kalico ship no generic_cartesian kinematics.
+        tempdir, root = self.make_tree()
+        with tempdir:
+            self.assertEqual(check_contract.check_klipper_contract(root), [])
+
+    def test_generic_cartesian_carriage_contract_passes(self):
+        tempdir, root = self.make_tree(
+            generic_cartesian_source=self.valid_generic_cartesian_source())
+        with tempdir:
+            self.assertEqual(check_contract.check_klipper_contract(root), [])
+
+    def test_missing_carriage_rail_lookup_fails(self):
+        source = self.valid_generic_cartesian_source().replace(
+            "    def get_rail(self):\n"
+            "        return self.rail\n", "")
+        tempdir, root = self.make_tree(generic_cartesian_source=source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: MainCarriage.get_rail not found', errors)
+
+    def test_renamed_primary_carriages_attribute_fails(self):
+        # The loader keeps a local variable of the same name, so only the
+        # renamed attribute may decide the outcome.
+        source = self.valid_generic_cartesian_source().replace(
+            'self.primary_carriages', 'self.axis_carriages')
+        tempdir, root = self.make_tree(generic_cartesian_source=source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: kinematics primary_carriages not found',
+            errors)
+
+    def test_reordered_valid_axes_fails(self):
+        source = self.valid_generic_cartesian_source().replace(
+            "VALID_AXES = ['x', 'y', 'z']", "VALID_AXES = ['z', 'y', 'x']")
+        tempdir, root = self.make_tree(generic_cartesian_source=source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: kinematics VALID_AXES order not found',
+            errors)
+
+    def test_missing_rail_get_endstops_fails(self):
+        stepper_source = self.valid_stepper_source().replace(
+            "    def get_endstops(self):\n"
+            "        return list(self.endstops)\n", "")
+        tempdir, root = self.make_tree(
+            generic_cartesian_source=self.valid_generic_cartesian_source(),
+            stepper_source=stepper_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: rail get_endstops not found', errors)
+
+    def test_late_primary_endstop_registration_fails(self):
+        # A rail that no longer registers its own endstop first would make
+        # the first rail endstop an extra carriage switch.
+        stepper_source = self.valid_stepper_source().replace(
+            "        self.lookup_endstop(self.endstop_pin, self.name)\n", "")
+        tempdir, root = self.make_tree(
+            generic_cartesian_source=self.valid_generic_cartesian_source(),
+            stepper_source=stepper_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: rail primary endstop registration'
+            ' not found', errors)
 
     def test_missing_template_wrapper_fails(self):
         tempdir, root = self.make_tree(gcode_macro_source="VALUE = 1\n")
