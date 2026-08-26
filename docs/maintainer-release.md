@@ -119,6 +119,38 @@ Run this checklist before creating any beta or stable release.
    - migration notes
    - installer behavior changes
    - known limitations
+10. Prepare the Wiki for the release. See
+    [Wiki Release Steps](#wiki-release-steps).
+
+## Wiki Release Steps
+
+The Wiki is a separate repository and is published from its default branch, so
+it documents the upcoming version before that version is released. Content that
+is only available from a testing branch is wrapped in markers:
+
+```text
+<!-- UNRELEASED:v1.2.0 -->
+> **Unreleased in v1.2.0:** ...
+<!-- /UNRELEASED:v1.2.0 -->
+```
+
+Before publishing a stable release, in the Wiki checkout:
+
+1. List the marked blocks:
+
+   ```bash
+   grep -rn "UNRELEASED" *.md
+   ```
+
+2. Remove each marked note and both marker lines. The surrounding text stays;
+   it describes the behavior that is then released.
+3. Remove the version note on the Wiki home page.
+4. Replace the `Unreleased` wording in the `Changelog` heading with the
+   release date.
+5. Rerun the `grep` command and confirm it reports nothing.
+
+Beta releases keep the markers. The testing branch is still the only source of
+the marked behavior until the stable release.
 
 ## Klipper Compatibility Monitoring
 
