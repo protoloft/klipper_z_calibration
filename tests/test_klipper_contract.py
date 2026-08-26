@@ -59,14 +59,14 @@ class KlipperContractTest(unittest.TestCase):
         (root / 'klippy' / 'extras' / 'gcode_macro.py').write_text(
             gcode_macro_source or self.valid_gcode_macro_source(),
             encoding='utf-8')
+        (root / 'klippy' / 'stepper.py').write_text(
+            stepper_source or self.valid_stepper_source(),
+            encoding='utf-8')
         if generic_cartesian_source is not None:
             (root / 'klippy' / 'kinematics').mkdir(parents=True)
             (root / 'klippy' / 'kinematics'
              / 'generic_cartesian.py').write_text(generic_cartesian_source,
                                                   encoding='utf-8')
-            (root / 'klippy' / 'stepper.py').write_text(
-                stepper_source or self.valid_stepper_source(),
-                encoding='utf-8')
         return tempdir, root
 
     def valid_generic_cartesian_source(self):
@@ -301,16 +301,28 @@ class KlipperContractTest(unittest.TestCase):
             errors)
 
     def test_missing_rail_get_endstops_fails(self):
+        # The Z rail is recognized by the endstop it registered, so this is
+        # required for every supported kinematics, not only for carriages.
         stepper_source = self.valid_stepper_source().replace(
             "    def get_endstops(self):\n"
             "        return list(self.endstops)\n", "")
+        tempdir, root = self.make_tree(stepper_source=stepper_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: rail get_endstops not found', errors)
+
+    def test_missing_carriage_rail_get_endstops_fails(self):
+        stepper_source = self.valid_stepper_source().replace(
+            'class GenericPrinterRail:', 'class OtherRail:')
         tempdir, root = self.make_tree(
             generic_cartesian_source=self.valid_generic_cartesian_source(),
             stepper_source=stepper_source)
         with tempdir:
             errors = check_contract.check_klipper_contract(root)
         self.assertIn(
-            'Klipper contract failed: rail get_endstops not found', errors)
+            'Klipper contract failed: GenericPrinterRail.get_endstops'
+            ' not found', errors)
 
     def test_late_primary_endstop_registration_fails(self):
         # A rail that no longer registers its own endstop first would make

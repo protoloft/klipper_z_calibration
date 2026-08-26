@@ -246,6 +246,17 @@ def validate_mcu(root, errors):
     require(has_class(tree, 'MCU_endstop'), 'MCU_endstop not found', errors)
 
 
+def validate_stepper(root, errors):
+    """Validate source markers for rail endstop access."""
+    # The rail that registered the calibration endstop is the Z rail whose
+    # homing settings are cached. The rail class is named PrinterRail in
+    # older Klipper and Kalico and GenericPrinterRail in current Klipper,
+    # so only the method itself can be required here.
+    _source, tree = read_source(root, 'klippy/stepper.py')
+    require(has_function(tree, 'get_endstops'),
+            'rail get_endstops not found', errors)
+
+
 def validate_generic_cartesian(root, errors):
     """Validate source markers for generic_cartesian Z endstop lookup."""
     # generic_cartesian is newer than the supported Klipper baseline and does
@@ -269,7 +280,7 @@ def validate_generic_cartesian(root, errors):
     _stepper_source, stepper_tree = read_source(root, 'klippy/stepper.py')
     require(class_has_function(stepper_tree, 'GenericPrinterRail',
                                'get_endstops'),
-            'rail get_endstops not found', errors)
+            'GenericPrinterRail.get_endstops not found', errors)
     # The carriage registers its own endstop in __init__, before any stepper
     # or extra carriage can append one. Only that makes the first rail
     # endstop the primary Z endstop, which is what the lookup returns.
@@ -297,6 +308,7 @@ def validate_baseline(root):
         validate_bed_mesh(root, errors)
         validate_mcu(root, errors)
         validate_gcode_macro(root, errors)
+        validate_stepper(root, errors)
         validate_generic_cartesian(root, errors)
     except ContractError as err:
         errors.append(str(err))

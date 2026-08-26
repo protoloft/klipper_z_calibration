@@ -8,10 +8,11 @@ import sys
 import types
 import unittest
 
-from fakes import FakeCarriage, FakeCarriageRail, FakeConfig, FakeError
-from fakes import FakeGenericCartesianKinematics, FakeLegacyProbe
-from fakes import FakeMCUEndstop, FakeOldDefaultsProbe, FakePrinter
-from fakes import FakeProbe, FakeRecordingMCUEndstop, FakeTemplate
+from fakes import FakeCarriage, FakeConfig, FakeEndstopRail, FakeError
+from fakes import FakeForeignEndstopRail, FakeGenericCartesianKinematics
+from fakes import FakeInactiveRail, FakeLegacyProbe, FakeMCUEndstop
+from fakes import FakeOldDefaultsProbe, FakePrinter, FakeProbe, FakeRail
+from fakes import FakeRecordingMCUEndstop, FakeTemplate
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -318,8 +319,8 @@ class HomingCompatZEndstopTest(unittest.TestCase):
     # uses a '[carriage z]' section that may also be named freely.
     def setup_carriages(self, printer, z_endstops, z_axis=2):
         """Give the fake toolhead a generic_cartesian Z carriage."""
-        x_rail = FakeCarriageRail([(FakeMCUEndstop(), 'carriage x')])
-        z_rail = FakeCarriageRail(z_endstops)
+        x_rail = FakeEndstopRail([(FakeMCUEndstop(), 'carriage x')])
+        z_rail = FakeEndstopRail(z_endstops)
         printer.toolhead.kinematics = FakeGenericCartesianKinematics(
             [FakeCarriage(0, x_rail), FakeCarriage(z_axis, z_rail)])
         return z_rail
@@ -427,7 +428,7 @@ class HomingCompatZEndstopTest(unittest.TestCase):
         # the carriage mapping instead would iterate carriage names.
         printer = FakePrinter()
         endstop = FakeMCUEndstop()
-        rail = FakeCarriageRail([(FakeMCUEndstop(), 'carriage z')])
+        rail = FakeEndstopRail([(FakeMCUEndstop(), 'carriage z')])
         printer.toolhead.kinematics = types.SimpleNamespace(
             carriages={'z': FakeCarriage(2, rail)})
         printer.query_endstops.endstops = [(endstop, 'stepper_z')]
@@ -455,18 +456,57 @@ class HomingCompatZEndstopTest(unittest.TestCase):
 class HomingCompatRailSettingsTest(unittest.TestCase):
     """Covers Z rail settings read during the home_rails_end event."""
 
-    def test_carriage_rail_settings_are_read(self):
+    Z_SETTINGS = {
+        'position_endstop': 0.0,
+        'homing_speed': 6.0,
+        'second_homing_speed': 2.0,
+        'homing_retract_dist': 1.0,
+        'position_min': -2.0,
+    }
+
+    def setUp(self):
+        self.compat = klipper_compat.HomingCompat(FakePrinter())
+        self.endstop = FakeMCUEndstop()
+        self.z_endstop = klipper_compat.EndstopWrapper(self.endstop)
+
+    def test_rail_of_the_calibration_endstop_is_used(self):
         # generic_cartesian homes carriage rails, so the same settings the
         # classic Z rail provides have to be readable from them.
-        compat = klipper_compat.HomingCompat(FakePrinter())
-        settings = compat.get_z_rail_settings(FakeCarriageRail())
-        self.assertEqual(settings, {
-            'position_endstop': 0.0,
-            'homing_speed': 6.0,
-            'second_homing_speed': 2.0,
-            'homing_retract_dist': 1.0,
-            'position_min': -2.0,
-        })
+        rail = FakeEndstopRail([(self.endstop, 'carriage z')])
+        self.assertEqual(self.compat.get_z_rail_settings(rail,
+                                                         self.z_endstop),
+                         self.Z_SETTINGS)
+
+    def test_additional_rail_endstops_do_not_hide_the_rail(self):
+        # Extra Z steppers and extra carriages register further endstops
+        # on the same rail.
+        rail = FakeEndstopRail([(FakeMCUEndstop(), 'stepper_z'),
+                                (self.endstop, 'z1')])
+        self.assertEqual(self.compat.get_z_rail_settings(rail,
+                                                         self.z_endstop),
+                         self.Z_SETTINGS)
+
+    def test_rail_with_a_foreign_endstop_is_ignored(self):
+        # The corexz X rail would answer for Z on the axis test alone and
+        # latch the X homing speed and X position_min for probing.
+        rail = FakeForeignEndstopRail()
+        self.assertTrue(rail.get_steppers()[0].is_active_axis('z'))
+        self.assertIsNone(self.compat.get_z_rail_settings(rail,
+                                                          self.z_endstop))
+
+    def test_rail_without_endstops_falls_back_to_the_axis_test(self):
+        self.assertEqual(
+            self.compat.get_z_rail_settings(FakeRail(), self.z_endstop),
+            self.Z_SETTINGS)
+        self.assertIsNone(
+            self.compat.get_z_rail_settings(FakeInactiveRail(),
+                                            self.z_endstop))
+
+    def test_without_a_calibration_endstop_the_axis_test_decides(self):
+        self.assertIsNotNone(
+            self.compat.get_z_rail_settings(FakeForeignEndstopRail()))
+        self.assertIsNone(
+            self.compat.get_z_rail_settings(FakeInactiveRail()))
 
 
 class RunGcodeTemplateTest(unittest.TestCase):

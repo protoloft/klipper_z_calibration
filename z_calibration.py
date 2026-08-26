@@ -192,9 +192,10 @@ class ZCalibrationHelper:
 
     def handle_home_rails_end(self, homing_state, rails):
         """Cache Z rail homing settings after Klipper homes rails."""
-        # get z homing position
+        # get z homing position from the rail of the calibration endstop
         for rail in rails:
-            settings = self.homing_compat.get_z_rail_settings(rail)
+            settings = self.homing_compat.get_z_rail_settings(rail,
+                                                              self.z_endstop)
             if settings is None:
                 continue
             # get homing settings from z rail

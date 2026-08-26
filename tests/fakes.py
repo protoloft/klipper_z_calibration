@@ -518,7 +518,7 @@ class FakeInactiveStepper:
 
 
 class FakeRail:
-    """Z rail exposing homing settings consumed by HomingCompat."""
+    """Z rail exposing homing settings but no endstop list."""
 
     position_endstop = 0.0
     homing_speed = 6.0
@@ -537,11 +537,12 @@ class FakeInactiveRail(FakeRail):
         return [FakeInactiveStepper()]
 
 
-class FakeCarriageRail(FakeRail):
-    """Carriage rail of the generic_cartesian kinematics.
+class FakeEndstopRail(FakeRail):
+    """Rail that also reports the endstops registered for it.
 
-    It serves both the homing settings of the home_rails_end event and the
-    endstops registered for the carriage, like GenericPrinterRail does.
+    Klipper rails serve both the homing settings of the home_rails_end
+    event and their endstop list. Carriage rails of the generic_cartesian
+    kinematics have the same shape.
     """
 
     def __init__(self, endstops=None):
@@ -549,6 +550,25 @@ class FakeCarriageRail(FakeRail):
 
     def get_endstops(self):
         return list(self.endstops)
+
+
+class FakeForeignEndstopRail(FakeEndstopRail):
+    """Rail with a Z active stepper but an endstop of another axis.
+
+    This is the corexz and hybrid_corexz shape, where the X rail steppers
+    report themselves as active on Z. Its homing settings differ from the
+    Z rail defaults so that a mix-up is visible in tests.
+    """
+
+    position_endstop = 300.0
+    homing_speed = 50.0
+    second_homing_speed = 25.0
+    homing_retract_dist = 5.0
+    position_min = 0.0
+
+    def __init__(self, endstops=None):
+        FakeEndstopRail.__init__(
+            self, endstops or [(FakeMCUEndstop(), 'stepper_x')])
 
 
 class FakeCarriage:
