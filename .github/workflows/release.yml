@@ -37,38 +37,30 @@ jobs:
       RELEASE_CHANNEL: ${{ github.event_name == 'workflow_dispatch' && inputs.channel || '' }}
 
     steps:
+      # This checkout only provides scripts/check_release.py. It uses the
+      # default ref, so on a tag push the script comes from the tag - exactly
+      # like this workflow file, which GitHub also reads from the tag. That is
+      # no new trust boundary: whoever can push the tag already controls the
+      # workflow. What contains this job instead: the checkout persists no
+      # credentials, the job keeps the read-only workflow permissions, and
+      # the only job allowed to write releases (draft-release) checks out no
+      # source at all.
+      - name: Check out validation script
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # actions/checkout@v6.0.3
+        with:
+          persist-credentials: false
+
+      # scripts/check_release.py is the single source of truth for release tag
+      # classification; the tag and channel stay in env vars so that untrusted
+      # input is never interpolated into this shell command.
       - name: Validate release metadata
         id: release
         run: |
-          stable_re='^v([0-9]+\.[0-9]+\.[0-9]+)$'
-          beta_re='^v([0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+)$'
-
-          if [[ "$RELEASE_TAG" =~ $stable_re ]]; then
-              version="${BASH_REMATCH[1]}"
-              channel="stable"
-              prerelease="false"
-          elif [[ "$RELEASE_TAG" =~ $beta_re ]]; then
-              version="${BASH_REMATCH[1]}"
-              channel="beta"
-              prerelease="true"
-          else
-              echo "invalid release tag '$RELEASE_TAG'; expected vX.Y.Z or vX.Y.Z-beta.N" >&2
-              exit 1
+          args=(--tag "$RELEASE_TAG" --github-output "$GITHUB_OUTPUT")
+          if [ -n "$RELEASE_CHANNEL" ]; then
+              args+=(--channel "$RELEASE_CHANNEL")
           fi
-
-          if [ -n "$RELEASE_CHANNEL" ] \
-             && [ "$channel" != "$RELEASE_CHANNEL" ]; then
-              echo "tag $RELEASE_TAG is $channel, not $RELEASE_CHANNEL" >&2
-              exit 1
-          fi
-
-          {
-              echo "tag=$RELEASE_TAG"
-              echo "version=$version"
-              echo "channel=$channel"
-              echo "prerelease=$prerelease"
-              echo "title=$RELEASE_TAG"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/check_release.py "${args[@]}"
 
       - name: Verify tag exists
         env:
@@ -96,6 +88,9 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # actions/setup-python@v6.2.0
         with:
           python-version: "3.13"
+
+      - name: Install lint tool
+        run: python -m pip install ruff==0.16.4
 
       - name: Run local validation
         run: python scripts/check_all.py

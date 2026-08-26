@@ -22,6 +22,7 @@ def load_script(name):
     return module
 
 
+check_all = load_script('check_all.py')
 check_release = load_script('check_release.py')
 update_moonraker = load_script('update_moonraker.py')
 
@@ -100,7 +101,6 @@ class MoonrakerUpdateTest(unittest.TestCase):
                              "[server]\nhost: 0.0.0.0\n")
             self.assertFalse(update_moonraker.update_config_file(path, "/repo"))
 
-
     def test_second_changing_run_keeps_the_first_backup(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = pathlib.Path(tempdir) / 'moonraker.conf'
@@ -148,8 +148,26 @@ class MoonrakerUpdateTest(unittest.TestCase):
             with self.assertRaises(update_moonraker.BackupError):
                 update_moonraker.update_config_file(path, "/repo")
             self.assertEqual(path.read_text(encoding='utf-8'), original)
+
+
+ACTION_PIN_REASON = (
+    "GitHub Actions resolves tags and branches when the workflow runs, so a"
+    " retagged or compromised action release would execute in this"
+    " repository without any change here. Pin every action to its full 40"
+    " character commit SHA and keep the human readable version in a trailing"
+    " comment, the way .github/workflows/release.yml already does:"
+    " uses: actions/checkout@<sha>  # actions/checkout@v6.0.3")
+
+LINT_INSTALL_REASON = (
+    "scripts/check_all.py skips its lint step when ruff is missing, so a job"
+    " that runs it without installing ruff stays green while linting"
+    " nothing. Add the step .github/workflows/ci.yml already uses before the"
+    " check_all.py step: run: python -m pip install ruff==%s"
+    % (check_all.RUFF_VERSION,))
+
+
 class ReleaseWorkflowTest(unittest.TestCase):
-    """Covers release workflow safety properties."""
+    """Covers release and shared GitHub workflow safety properties."""
 
     def workflow_text(self, name='release.yml'):
         """Return the tracked GitHub release workflow text."""
@@ -159,20 +177,120 @@ class ReleaseWorkflowTest(unittest.TestCase):
     def workflow_texts(self):
         """Return all tracked GitHub workflow texts keyed by file name."""
         workflow_dir = ROOT / '.github' / 'workflows'
+        # GitHub accepts both extensions, so a future .yaml workflow must
+        # not slip past the shared workflow invariants below.
+        paths = (list(workflow_dir.glob('*.yml'))
+                 + list(workflow_dir.glob('*.yaml')))
         return {
             path.name: path.read_text(encoding='utf-8')
-            for path in sorted(workflow_dir.glob('*.yml'))
+            for path in sorted(paths)
         }
 
+    def job_block(self, text, name):
+        """Return the release workflow text of one job by job id."""
+        start = text.index('\n  %s:\n' % (name,)) + 1
+        match = re.compile(r'\n  [a-z][a-z0-9-]*:\n').search(text, start + 1)
+        if match is None:
+            return text[start:]
+        return text[start:match.start() + 1]
+
+    def iter_job_blocks(self, text):
+        """Yield (job id, job text) pairs of one workflow file."""
+        jobs = text.index('\njobs:\n')
+        starts = list(re.compile(r'\n  ([a-z][a-z0-9_-]*):\n')
+                      .finditer(text, jobs + 1))
+        for index, match in enumerate(starts):
+            if index + 1 < len(starts):
+                end = starts[index + 1].start() + 1
+            else:
+                end = len(text)
+            yield match.group(1), text[match.start() + 1:end]
+
     def test_release_ref_is_validated_before_release_checkout(self):
+        """Check that the tag is classified before any job builds from it.
+
+        The checkout of the validating job is covered by
+        test_release_ref_checkout_does_not_persist_credentials; that
+        property is not repeated here.
+        """
         text = self.workflow_text()
         self.assertLess(text.index('name: Validate release ref'),
                         text.index('name: Check out release tag'))
         self.assertIn(
             'ref: refs/tags/${{ needs.validate-release-ref.outputs.tag }}',
             text)
-        self.assertIn('persist-credentials: false', text)
         self.assertIn('permissions:\n  contents: read', text)
+        # The job that checks out the tag only starts once the classifying
+        # job succeeded; textual order alone would not enforce that.
+        validate_source = self.job_block(text, 'validate-source')
+        self.assertIn('needs:\n      - validate-release-ref',
+                      validate_source)
+        # The validating job stays on the read-only workflow permissions.
+        # A job level block could only raise them, never lower the risk.
+        validate_ref = self.job_block(text, 'validate-release-ref')
+        self.assertNotIn('permissions:', validate_ref)
+
+    def test_release_ref_validation_uses_shared_script(self):
+        validate_ref = self.job_block(self.workflow_text(),
+                                      'validate-release-ref')
+        self.assertIn('python3 scripts/check_release.py', validate_ref)
+        self.assertIn('--tag "$RELEASE_TAG"', validate_ref)
+        self.assertIn('--github-output "$GITHUB_OUTPUT"', validate_ref)
+        # The expected channel is optional and must only be passed when the
+        # workflow_dispatch input actually set it.
+        self.assertIn('--channel "$RELEASE_CHANNEL"', validate_ref)
+        self.assertIn('if [ -n "$RELEASE_CHANNEL" ]; then', validate_ref)
+        # Untrusted values stay in env vars instead of being interpolated
+        # into the shell command line.
+        self.assertIn('RELEASE_TAG: ${{', validate_ref)
+        self.assertIn('RELEASE_CHANNEL: ${{', validate_ref)
+        self.assertNotIn('--tag "${{', validate_ref)
+        self.assertNotIn('--channel "${{', validate_ref)
+
+    def test_release_workflow_has_no_second_tag_classification(self):
+        text = self.workflow_text()
+        # scripts/check_release.py is the single source of truth. Any tag
+        # regex or output writing in the workflow would silently drift.
+        for pattern in ['stable_re', 'beta_re', 'BASH_REMATCH',
+                        '-beta\\.', '[0-9]+\\.[0-9]+']:
+            with self.subTest(pattern=pattern):
+                self.assertNotIn(pattern, text)
+        # Bash regex matching only means drift where the tag is classified,
+        # so this stays scoped to that job instead of banning '=~' from
+        # every unrelated future step of the workflow.
+        validate_ref = self.job_block(text, 'validate-release-ref')
+        self.assertNotIn('=~', validate_ref)
+        self.assertNotIn('>> "$GITHUB_OUTPUT"', text)
+        self.assertNotIn('echo "tag=', text)
+
+    def test_release_ref_job_outputs_match_script_outputs(self):
+        text = self.workflow_text()
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = pathlib.Path(tempdir) / 'github_output'
+            metadata = check_release.classify_tag('v1.2.3')
+            check_release.write_outputs(path, metadata)
+            lines = path.read_text(encoding='utf-8').splitlines()
+        keys = [line.split('=', 1)[0] for line in lines]
+        self.assertEqual(keys,
+                         ['tag', 'version', 'channel', 'prerelease', 'title'])
+        validate_ref = self.job_block(text, 'validate-release-ref')
+        for key in keys:
+            with self.subTest(key=key):
+                self.assertIn(
+                    '%s: ${{ steps.release.outputs.%s }}' % (key, key),
+                    validate_ref)
+
+    def test_release_ref_checkout_does_not_persist_credentials(self):
+        validate_ref = self.job_block(self.workflow_text(),
+                                      'validate-release-ref')
+        self.assertIn('uses: actions/checkout@', validate_ref)
+        self.assertIn('persist-credentials: false', validate_ref)
+        # The checkout action stays pinned to the same commit the rest of
+        # the workflow uses.
+        pins = set(re.findall(r'uses: actions/checkout@(\S+)',
+                              self.workflow_text()))
+        self.assertEqual(len(pins), 1)
+        self.assertRegex(pins.pop(), r'^[0-9a-f]{40}$')
 
     def test_checkout_credentials_are_not_persisted(self):
         for name, text in self.workflow_texts().items():
@@ -184,6 +302,39 @@ class ReleaseWorkflowTest(unittest.TestCase):
                 with self.subTest(workflow=name, offset=match.start()):
                     self.assertIn('persist-credentials: false',
                                   checkout_block)
+
+    def test_check_all_jobs_install_the_pinned_lint_tool(self):
+        """Every job running check_all.py installs ruff before it."""
+        install = 'pip install ruff==%s' % (check_all.RUFF_VERSION,)
+        checked = 0
+        for name, text in sorted(self.workflow_texts().items()):
+            for job, block in self.iter_job_blocks(text):
+                if 'scripts/check_all.py' not in block:
+                    continue
+                checked += 1
+                with self.subTest(workflow=name, job=job):
+                    self.assertIn(install, block, LINT_INSTALL_REASON)
+                    self.assertLess(block.index(install),
+                                    block.index('scripts/check_all.py'),
+                                    LINT_INSTALL_REASON)
+        self.assertGreater(checked, 0,
+                           "no workflow job runs scripts/check_all.py")
+
+    def test_all_workflow_actions_are_pinned_to_commit_shas(self):
+        texts = self.workflow_texts()
+        self.assertTrue(texts, "no GitHub workflow files were found")
+        checked = 0
+        for name, text in sorted(texts.items()):
+            for match in re.finditer(r'uses:[ \t]*(\S+)', text):
+                reference = match.group(1)
+                action, _, ref = reference.partition('@')
+                checked += 1
+                with self.subTest(workflow=name, action=action):
+                    self.assertRegex(
+                        ref, r'^[0-9a-f]{40}$',
+                        "%s uses %s, which is not pinned to a commit SHA."
+                        " %s" % (name, reference, ACTION_PIN_REASON))
+        self.assertGreater(checked, 0, "no action references were checked")
 
     def test_release_publish_job_does_not_checkout_source(self):
         text = self.workflow_text()

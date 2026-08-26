@@ -29,6 +29,11 @@ release.
 8. Let the `Release` GitHub Actions workflow create draft releases.
 9. Publish draft releases manually after reviewing the generated notes.
 
+The `Release` workflow classifies the tag by running
+`scripts/check_release.py`. That script is the single source of truth for
+stable and beta tag rules, so the local commands below validate exactly what
+the workflow enforces.
+
 Moonraker supports `stable`, `beta`, and `dev` channels for `git_repo`
 extensions. If `channel` is omitted, Moonraker treats the extension as `dev`.
 This project should guide normal users to `stable`. Existing no-channel

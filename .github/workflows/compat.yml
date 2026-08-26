@@ -15,14 +15,17 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # actions/checkout@v6.0.3
         with:
           persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # actions/setup-python@v6.2.0
         with:
           python-version: "3.13"
+
+      - name: Install lint tool
+        run: python -m pip install ruff==0.16.4
 
       - name: Check repository
         run: python scripts/check_all.py
