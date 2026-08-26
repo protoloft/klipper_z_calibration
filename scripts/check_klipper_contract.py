@@ -252,9 +252,17 @@ def validate_stepper(root, errors):
     # homing settings are cached. The rail class is named PrinterRail in
     # older Klipper and Kalico and GenericPrinterRail in current Klipper,
     # so only the method itself can be required here.
-    _source, tree = read_source(root, 'klippy/stepper.py')
+    source, tree = read_source(root, 'klippy/stepper.py')
     require(has_function(tree, 'get_endstops'),
             'rail get_endstops not found', errors)
+    # The rail keeps the very object it hands to query_endstops. Only that
+    # identity makes the endstop looked up by name comparable to the
+    # endstops of a homed rail.
+    require('self.endstops.append((mcu_endstop' in source,
+            'rail endstop list registration not found', errors)
+    require('register_endstop(mcu_endstop' in source,
+            'query_endstops registration of the rail endstop not found',
+            errors)
 
 
 def validate_generic_cartesian(root, errors):

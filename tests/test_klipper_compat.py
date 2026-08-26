@@ -503,10 +503,12 @@ class HomingCompatRailSettingsTest(unittest.TestCase):
                                             self.z_endstop))
 
     def test_without_a_calibration_endstop_the_axis_test_decides(self):
+        # The endstop is a required argument, so this is only reachable
+        # before the calibration endstop is resolved at startup.
         self.assertIsNotNone(
-            self.compat.get_z_rail_settings(FakeForeignEndstopRail()))
+            self.compat.get_z_rail_settings(FakeForeignEndstopRail(), None))
         self.assertIsNone(
-            self.compat.get_z_rail_settings(FakeInactiveRail()))
+            self.compat.get_z_rail_settings(FakeInactiveRail(), None))
 
 
 class RunGcodeTemplateTest(unittest.TestCase):

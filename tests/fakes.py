@@ -518,7 +518,12 @@ class FakeInactiveStepper:
 
 
 class FakeRail:
-    """Z rail exposing homing settings but no endstop list."""
+    """Rail of unknown shape that exposes no endstop list.
+
+    Every supported firmware exposes get_endstops() on its rail class, so
+    this shape only covers the defensive fallback of HomingCompat and is
+    not a rail that Klipper or Kalico actually build.
+    """
 
     position_endstop = 0.0
     homing_speed = 6.0
@@ -531,7 +536,7 @@ class FakeRail:
 
 
 class FakeInactiveRail(FakeRail):
-    """Rail whose stepper is not active on Z."""
+    """Rail of unknown shape whose stepper is not active on Z."""
 
     def get_steppers(self):
         return [FakeInactiveStepper()]

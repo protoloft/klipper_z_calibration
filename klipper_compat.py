@@ -371,7 +371,7 @@ class HomingCompat:
         names = [name for _endstop, name in query_endstops.endstops]
         return ', '.join(names) or 'none'
 
-    def get_z_rail_settings(self, rail, z_endstop=None):
+    def get_z_rail_settings(self, rail, z_endstop):
         """Extract Z rail homing settings from a Klipper rail object."""
         if not self._is_z_rail(rail, z_endstop):
             return None
@@ -396,10 +396,15 @@ class HomingCompat:
         mcu_endstop = getattr(z_endstop, 'mcu_endstop', None)
         get_endstops = getattr(rail, 'get_endstops', None)
         if mcu_endstop is not None and get_endstops is not None:
+            # An empty list means this rail registered no endstop, not that
+            # its shape is unknown, so it is not the Z rail and must not
+            # reach the axis test below. Every supported rail class demands
+            # an endstop_pin, so the case does not occur in practice.
             return any(endstop is mcu_endstop
                        for endstop, _name in get_endstops())
-        # Without a calibration endstop or a rail endstop list there is
-        # nothing to compare, so keep the previous axis test.
+        # Only a rail without an endstop list, or a caller that has no
+        # calibration endstop yet, leaves nothing to compare. Then the
+        # previous axis test decides, with the ambiguity described above.
         return rail.get_steppers()[0].is_active_axis('z')
 
     def probing_move(self, mcu_endstop, pos, speed):

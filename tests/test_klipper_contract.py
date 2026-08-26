@@ -90,6 +90,19 @@ class KlipperContractTest(unittest.TestCase):
             "    def __init__(self, config):\n"
             "        self.endstops = []\n"
             "        self.lookup_endstop(self.endstop_pin, self.name)\n"
+            "    def lookup_endstop(self, endstop_pin, name):\n"
+            "        self.endstops.append((mcu_endstop, name))\n"
+            "        self.query_endstops.register_endstop(mcu_endstop, name)\n"
+            "    def get_endstops(self):\n"
+            "        return list(self.endstops)\n")
+
+    def legacy_stepper_source(self):
+        """Return source for the rail class of older Klipper and Kalico."""
+        return (
+            "class PrinterRail:\n"
+            "    def add_extra_stepper(self, config):\n"
+            "        self.endstops.append((mcu_endstop, name))\n"
+            "        query_endstops.register_endstop(mcu_endstop, name)\n"
             "    def get_endstops(self):\n"
             "        return list(self.endstops)\n")
 
@@ -299,6 +312,36 @@ class KlipperContractTest(unittest.TestCase):
         self.assertIn(
             'Klipper contract failed: kinematics VALID_AXES order not found',
             errors)
+
+    def test_legacy_rail_class_passes_the_baseline(self):
+        # Klipper v0.13.0 and Kalico name the rail class PrinterRail, so
+        # the baseline must not require the current class name.
+        tempdir, root = self.make_tree(
+            stepper_source=self.legacy_stepper_source())
+        with tempdir:
+            self.assertEqual(check_contract.check_klipper_contract(root), [])
+
+    def test_missing_rail_endstop_list_registration_fails(self):
+        # The rail has to keep the object it hands to query_endstops.
+        stepper_source = self.valid_stepper_source().replace(
+            "        self.endstops.append((mcu_endstop, name))\n", "")
+        tempdir, root = self.make_tree(stepper_source=stepper_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: rail endstop list registration'
+            ' not found', errors)
+
+    def test_missing_query_endstops_registration_fails(self):
+        stepper_source = self.valid_stepper_source().replace(
+            "        self.query_endstops.register_endstop(mcu_endstop,"
+            " name)\n", "")
+        tempdir, root = self.make_tree(stepper_source=stepper_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: query_endstops registration of the'
+            ' rail endstop not found', errors)
 
     def test_missing_rail_get_endstops_fails(self):
         # The Z rail is recognized by the endstop it registered, so this is
