@@ -117,7 +117,6 @@ layouts.
 ## Configuration Notes
 
 Use the Wiki for the full configuration reference:
-
 https://github.com/protoloft/klipper_z_calibration/wiki
 
 **The smaller the configured `switch_offset`, the farther the nozzle is from the
