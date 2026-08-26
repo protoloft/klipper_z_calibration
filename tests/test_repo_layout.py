@@ -10,17 +10,21 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
-# Top-level names that exist in the repository root today. z_calibration and
-# klipper_compat are the only runtime modules; the rest are support
-# directories. New entries need a deliberate decision, not an entry here.
-ALLOWED_ROOT_NAMES = frozenset([
+# Top-level names that exist in the repository root today. New entries need a
+# deliberate decision, not an entry here. Modules and directories are listed
+# separately so that both kinds are checked against a closed allow list; a
+# name list alone would only catch the collisions someone thought of.
+ALLOWED_ROOT_MODULES = frozenset([
     'z_calibration',
     'klipper_compat',
+])
+ALLOWED_ROOT_DIRS = frozenset([
     'scripts',
     'tests',
     'docs',
     'pictures',
 ])
+ALLOWED_ROOT_NAMES = ALLOWED_ROOT_MODULES | ALLOWED_ROOT_DIRS
 
 # klippy modules that this plugin imports or that Klipper loads while the
 # plugin is active. A repository root entry with one of these names would
@@ -53,17 +57,21 @@ SHADOWING_REASON = (
     " ALLOWED_ROOT_NAMES to make this test pass.")
 
 
+def root_directories():
+    """Return repository root directories importable as packages."""
+    return set([entry.name for entry in ROOT.iterdir()
+                if entry.is_dir()
+                and not entry.name.startswith('.')
+                and entry.name != '__pycache__'])
+
+
 def root_top_level_names():
     """Return importable top-level names in the repository root."""
-    names = set()
-    for entry in ROOT.iterdir():
-        if entry.name.startswith('.') or entry.name == '__pycache__':
-            continue
-        if entry.is_dir():
-            # Directories are importable as namespace packages.
-            names.add(entry.name)
-        elif entry.suffix == '.py':
-            names.add(entry.stem)
+    # Directories are importable as namespace packages, so they shadow just
+    # as effectively as a module file does.
+    names = set(root_directories())
+    for entry in ROOT.glob('*.py'):
+        names.add(entry.stem)
     return names
 
 
@@ -95,9 +103,18 @@ class RepoLayoutTest(unittest.TestCase):
 
     def test_no_unexpected_root_python_modules(self):
         modules = set([path.stem for path in ROOT.glob('*.py')])
-        unexpected = sorted(modules - ALLOWED_ROOT_NAMES)
+        unexpected = sorted(modules - ALLOWED_ROOT_MODULES)
         self.assertEqual(unexpected, [],
                          "unexpected root-level Python modules: %s. %s"
+                         % (', '.join(unexpected), SHADOWING_REASON))
+
+    def test_no_unexpected_root_directories(self):
+        # A closed allow list, so that a new root directory fails here even
+        # when its name is not in KLIPPY_MODULE_NAMES. That list can never be
+        # complete, so it must not be the only thing guarding directories.
+        unexpected = sorted(root_directories() - ALLOWED_ROOT_DIRS)
+        self.assertEqual(unexpected, [],
+                         "unexpected root-level directories: %s. %s"
                          % (', '.join(unexpected), SHADOWING_REASON))
 
 

@@ -194,6 +194,35 @@ class ReleaseWorkflowTest(unittest.TestCase):
             return text[start:]
         return text[start:match.start() + 1]
 
+    def without_comments(self, text):
+        """Return workflow text with whole-line comments removed."""
+        # Job structure is asserted against the mapping keys only, so that a
+        # comment mentioning a key never counts as that key being set.
+        return '\n'.join([line for line in text.splitlines()
+                          if not line.lstrip().startswith('#')])
+
+    def iter_run_blocks(self, text):
+        """Yield the shell body of every run: step in a workflow."""
+        lines = text.splitlines()
+        index = 0
+        while index < len(lines):
+            match = re.match(r'^(\s*)-?\s*run:[ \t]*(.*)$', lines[index])
+            index += 1
+            if match is None:
+                continue
+            indent, inline = match.group(1), match.group(2).strip()
+            if inline and inline not in ('|', '>', '|-', '>-', '|+', '>+'):
+                yield inline
+                continue
+            body = []
+            while index < len(lines):
+                following = lines[index]
+                if following.strip() and not following.startswith(indent + ' '):
+                    break
+                body.append(following)
+                index += 1
+            yield '\n'.join(body)
+
     def iter_job_blocks(self, text):
         """Yield (job id, job text) pairs of one workflow file."""
         jobs = text.index('\njobs:\n')
@@ -344,8 +373,34 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertIn('uses: actions/upload-artifact@', text)
         self.assertLess(text.index('uses: actions/upload-artifact@'),
                         text.index('  draft-release:'))
-        self.assertEqual(text.count('contents: write'), 1)
         self.assertIn('permissions:\n      contents: write', draft_release)
+
+    def test_only_the_publish_job_may_write_releases(self):
+        text = self.without_comments(self.workflow_text())
+        writers = [name for name, block in self.iter_job_blocks(text)
+                   if re.search(r'^\s+contents: write\s*$', block, re.M)]
+        self.assertEqual(
+            writers, ['draft-release'],
+            "exactly one job may hold contents: write, and it must be the"
+            " job that publishes releases without checking out source."
+            " Jobs found: %s" % (', '.join(writers) or 'none',))
+
+    def test_no_workflow_interpolates_context_into_a_shell_command(self):
+        texts = self.workflow_texts()
+        self.assertTrue(texts, "no GitHub workflow files were found")
+        checked = 0
+        for name, text in sorted(texts.items()):
+            for body in self.iter_run_blocks(text):
+                checked += 1
+                with self.subTest(workflow=name, run=body[:40]):
+                    self.assertNotIn(
+                        '${{', body,
+                        "%s interpolates a workflow context directly into a"
+                        " shell command. Pass the value through an env: entry"
+                        " and reference it as a quoted shell variable, so that"
+                        " its content is never parsed as shell syntax."
+                        % (name,))
+        self.assertGreater(checked, 0, "no run steps were checked")
 
     def test_release_workflow_updates_existing_draft_assets(self):
         text = self.workflow_text()
