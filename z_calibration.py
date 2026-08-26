@@ -18,6 +18,12 @@ from klipper_compat import BedMeshCompat, GCodeOffsetCompat, HomingCompat
 from klipper_compat import PrinterObjectCompat, ProbeCompat, ToolheadCompat
 from klipper_compat import run_gcode_template, validate_runtime_contract
 
+# A safe Z height below this is not enough clearance for the docking moves,
+# so it is replaced by the fallback below. Both the warning and the
+# assignment read the fallback from here, so they cannot drift apart.
+SAFE_Z_HEIGHT_MIN = 3.
+SAFE_Z_HEIGHT_FALLBACK = 20.
+
 class ZCalibrationHelper:
     """Owns plugin configuration, startup state, and G-Code commands."""
 
@@ -177,8 +183,12 @@ class ZCalibrationHelper:
             self.samples_result = probe_defaults['samples_result']
         if self.safe_z_height is None:
             self.safe_z_height = probe_defaults['safe_z_height']
-        if self.safe_z_height < 3:
-            self.safe_z_height = 20 # defaults to 20mm
+        if self.safe_z_height < SAFE_Z_HEIGHT_MIN:
+            logging.warning("%s: safe_z_height=%.3f is too low,"
+                            " using %.3f instead"
+                            % (self.name, self.safe_z_height,
+                               SAFE_Z_HEIGHT_FALLBACK))
+            self.safe_z_height = SAFE_Z_HEIGHT_FALLBACK
 
     def handle_home_rails_end(self, homing_state, rails):
         """Cache Z rail homing settings after Klipper homes rails."""
@@ -338,7 +348,7 @@ class ZCalibrationHelper:
             return bed_site
         raise gcmd.error("%s: cannot find a bed position! Either configure the"
                          " bed_xy_position for %s, the mesh's"
-                         " zero_reference_position, or use the NOZZLE_POSITION"
+                         " zero_reference_position, or use the BED_POSITION"
                          " parameter."
                          % (gcmd.get_command(), self.name))
     def _get_switch_offset(self, gcmd):

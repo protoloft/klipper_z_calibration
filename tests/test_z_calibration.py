@@ -260,6 +260,18 @@ class ZCalibrationTest(unittest.TestCase):
         helper, _printer = make_helper(probe=probe)
         self.assertEqual(helper.safe_z_height, 20)
 
+    def test_handle_connect_warns_about_safe_z_height_override(self):
+        printer = FakePrinter()
+        config = FakeConfig(printer, {'safe_z_height': '2'})
+        helper = z_calibration.ZCalibrationHelper(config)
+        with self.assertLogs(level='WARNING') as logs:
+            helper.handle_connect()
+        self.assertEqual(helper.safe_z_height, 20)
+        message = '\n'.join(logs.output)
+        self.assertIn(helper.name, message)
+        self.assertIn('2.000', message)
+        self.assertIn('20.000', message)
+
     def test_handle_home_rails_end_ignores_non_z_rails(self):
         printer = FakePrinter()
         config = FakeConfig(printer)
@@ -357,6 +369,10 @@ class ZCalibrationTest(unittest.TestCase):
             helper._get_switch_site(gcmd, [0.0, 0.0, None])
         with self.assertRaisesRegex(FakeError, 'cannot find a bed position'):
             helper._get_bed_site(gcmd)
+        with self.assertRaises(FakeError) as caught:
+            helper._get_bed_site(gcmd)
+        self.assertIn('BED_POSITION', str(caught.exception))
+        self.assertNotIn('NOZZLE_POSITION', str(caught.exception))
         with self.assertRaisesRegex(FakeError, 'cannot find a switch offset'):
             helper._get_switch_offset(gcmd)
 
@@ -552,6 +568,114 @@ class ZCalibrationTest(unittest.TestCase):
                 'bed_xy_position': '30,30',
             }, probe)
 
+    def test_calibration_requires_legacy_probe_mcu_endstop(self):
+        probe = FakeLegacyProbe()
+        probe.mcu_probe = FakeMCUEndstop()
+        helper, printer = make_helper({
+            'switch_offset': '0.5',
+            'offset_margins': '-10,10',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+        }, probe)
+        # A probe endstop wrapper that only survives startup validation:
+        # it exposes neither the MCU endstop surface nor a nested one, so
+        # the legacy probing_move() fallback has nothing to probe with.
+        probe.mcu_probe = types.SimpleNamespace(
+            query_endstop=lambda print_time: False)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        with self.assertRaisesRegex(FakeError,
+                                    'does not expose an MCU endstop'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertFalse(helper.last_state)
+        self.assertIsNone(helper.last_z_offset)
+        # The probe session is still ended for the failed run.
+        self.assertEqual(probe.end_calls, 1)
+
+    def test_probe_session_end_failure_is_logged_but_not_fatal(self):
+        session = FakeProbeSession(
+            [ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0)],
+            end_exception=FakeError('probe session end failed'))
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper({
+            'switch_offset': '0.5',
+            'offset_margins': '-10,10',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+        }, probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        with self.assertLogs(level='ERROR') as logs:
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        message = '\n'.join(logs.output)
+        self.assertIn('Multi-probe end', message)
+        self.assertIn('probe session end failed', message)
+        self.assertTrue(session.ended)
+        self.assertTrue(helper.last_state)
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+        self.assertAlmostEqual(
+            printer.gcode_move.offset_commands[1]['Z_ADJUST'], 3.5)
+
+    def test_probe_session_end_failure_preserves_original_error(self):
+        session = FakeProbeSession(
+            [ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0)],
+            end_exception=FakeError('probe session end failed'))
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper({
+            'switch_offset': '0.5',
+            'offset_margins': '-10,10',
+            'samples': '2',
+            'samples_tolerance': '0.01',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+        }, probe)
+        # The switch samples exceed the tolerance, so the calibration fails
+        # inside the probe session and the session end fails on top of it.
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+            [20.0, 20.0, 3.0],
+        ]
+        with self.assertLogs(level='ERROR') as logs:
+            with self.assertRaises(FakeError) as caught:
+                helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertIn('probe samples exceed tolerance', str(caught.exception))
+        self.assertNotIn('probe session end failed', str(caught.exception))
+        self.assertIn('Multi-probe end', '\n'.join(logs.output))
+        self.assertTrue(session.ended)
+        self.assertFalse(helper.last_state)
+        self.assertIsNone(helper.last_z_offset)
+
     def test_calibration_rejects_offset_outside_margins(self):
         session = FakeProbeSession([
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
@@ -644,6 +768,52 @@ class ZCalibrationTest(unittest.TestCase):
         run = z_calibration.CalibrationRun(helper, FakeGcmd())
         with self.assertRaisesRegex(FakeError, 'samples exceed tolerance'):
             run._probe_on_site(helper.z_endstop, [0.0, 0.0, None])
+
+    def test_probe_on_site_first_fast_probes_before_the_samples(self):
+        helper, printer = make_helper({
+            'probing_first_fast': 'true',
+            'probing_speed': '10',
+            'probing_second_speed': '2',
+            'samples': '2',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'probing_retract_dist': '0.5',
+        })
+        printer.homing.results = [
+            [0.0, 0.0, 5.0],
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.2],
+        ]
+        run = z_calibration.CalibrationRun(helper, FakeGcmd())
+        result = run._probe_on_site(helper.z_endstop, [0.0, 0.0, None])
+        # The fast probe comes first and only gets the nozzle down quickly;
+        # the tolerance samples follow with the second probing speed.
+        self.assertEqual([call[2] for call in printer.homing.calls],
+                         [10.0, 2.0, 2.0])
+        for call in printer.homing.calls:
+            self.assertIs(call[0], helper.z_endstop)
+            self.assertEqual(call[1][2], helper.position_min)
+        # The fast sample must not contribute to the calculated result.
+        self.assertAlmostEqual(result, 1.1)
+
+    def test_probe_on_site_without_first_fast_skips_the_fast_probe(self):
+        helper, printer = make_helper({
+            'probing_speed': '10',
+            'probing_second_speed': '2',
+            'samples': '2',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'probing_retract_dist': '0.5',
+        })
+        printer.homing.results = [
+            [0.0, 0.0, 1.0],
+            [0.0, 0.0, 1.2],
+        ]
+        run = z_calibration.CalibrationRun(helper, FakeGcmd())
+        result = run._probe_on_site(helper.z_endstop, [0.0, 0.0, None])
+        self.assertEqual([call[2] for call in printer.homing.calls],
+                         [2.0, 2.0])
+        self.assertAlmostEqual(result, 1.1)
 
     def test_probe_bed_first_fast_runs_single_sample_probe(self):
         session = FakeProbeSession([
@@ -738,6 +908,19 @@ class ZCalibrationTest(unittest.TestCase):
             helper, helper.objects_compat.lookup_probe(), FakeGcmd())
         self.assertEqual(adapter.get_test_position([1.0, 2.0, 3.0]),
                          [1.0, 2.0, 3.0])
+
+    def test_probe_compat_extracts_legacy_six_tuple(self):
+        # Legacy Klipper returned a plain 6-tuple without a test_z attribute:
+        # indexes 0-2 are the bed position and 3-5 the raw trigger position.
+        helper, _printer = make_helper()
+        adapter = klipper_compat.ProbeCompat(
+            helper, helper.objects_compat.lookup_probe(), FakeGcmd())
+        probe_result = (1.0, 2.0, 99.0, 3.0, 4.0, 5.0)
+        self.assertFalse(hasattr(probe_result, 'test_z'))
+        self.assertEqual(adapter.get_test_position(probe_result),
+                         [3.0, 4.0, 5.0])
+        self.assertEqual(adapter.get_test_position(list(probe_result)),
+                         [3.0, 4.0, 5.0])
 
     def test_probe_compat_creates_gcmd_without_parameter_snapshot(self):
         helper, _printer = make_helper({'samples_result': 'none'})

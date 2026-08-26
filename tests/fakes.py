@@ -34,6 +34,43 @@ class FakeMCUEndstop:
         return False
 
 
+class FakeRecordingMCUEndstop(FakeMCUEndstop):
+    """MCU endstop that records forwarded calls and returns markers."""
+
+    def __init__(self):
+        self.calls = []
+        self.mcu = object()
+        self.steppers = [object()]
+        self.add_stepper_result = object()
+        self.home_start_result = object()
+        self.home_wait_result = object()
+        self.query_result = True
+
+    def get_mcu(self):
+        self.calls.append(('get_mcu', (), {}))
+        return self.mcu
+
+    def add_stepper(self, stepper):
+        self.calls.append(('add_stepper', (stepper,), {}))
+        return self.add_stepper_result
+
+    def get_steppers(self):
+        self.calls.append(('get_steppers', (), {}))
+        return self.steppers
+
+    def home_start(self, *args, **kwargs):
+        self.calls.append(('home_start', args, dict(kwargs)))
+        return self.home_start_result
+
+    def home_wait(self, *args, **kwargs):
+        self.calls.append(('home_wait', args, dict(kwargs)))
+        return self.home_wait_result
+
+    def query_endstop(self, print_time):
+        self.calls.append(('query_endstop', (print_time,), {}))
+        return self.query_result
+
+
 ProbeResult = namedtuple(
     'probe_result',
     ['bed_x', 'bed_y', 'bed_z', 'test_x', 'test_y', 'test_z'])
@@ -270,11 +307,12 @@ class FakeProbeEndstop:
 class FakeProbeSession:
     """Probe session with queued results and command capture."""
 
-    def __init__(self, results):
+    def __init__(self, results, end_exception=None):
         self.results = list(results)
         self.pending = []
         self.run_gcmds = []
         self.ended = False
+        self.end_exception = end_exception
 
     def run_probe(self, gcmd):
         self.run_gcmds.append(gcmd)
@@ -290,6 +328,8 @@ class FakeProbeSession:
 
     def end_probe_session(self):
         self.ended = True
+        if self.end_exception is not None:
+            raise self.end_exception
 
 
 class FakeEmptyProbeSession:
@@ -372,6 +412,34 @@ class FakeOldProbe:
 
     def __init__(self):
         self.mcu_probe = FakeProbeEndstop(False)
+
+
+class FakeOldDefaultsProbe:
+    """Old probe combining attribute defaults with multi_probe hooks.
+
+    Klipper probes from before 2024-06-10 published their defaults as plain
+    attributes instead of get_probe_params()/get_offsets(). This shape has
+    the deprecated attributes only, so runtime contract tests can tell the
+    legacy branch apart from the modern one. The attributes are set per
+    instance so a test can drop a single one.
+    """
+
+    def __init__(self):
+        self.mcu_probe = FakeMCUEndstop()
+        self.sample_count = FakeOldProbe.sample_count
+        self.samples_tolerance = FakeOldProbe.samples_tolerance
+        self.samples_retries = FakeOldProbe.samples_retries
+        self.lift_speed = FakeOldProbe.lift_speed
+        self.samples_result = FakeOldProbe.samples_result
+        self.z_offset = FakeOldProbe.z_offset
+        self.begin_calls = 0
+        self.end_calls = 0
+
+    def multi_probe_begin(self):
+        self.begin_calls += 1
+
+    def multi_probe_end(self):
+        self.end_calls += 1
 
 
 class FakeProbeWithProbeSession:

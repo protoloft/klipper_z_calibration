@@ -541,7 +541,9 @@ class GCodeOffsetCompat:
 
 def run_gcode_template(template, params):
     """Run a loaded G-Code template with command-style parameters."""
-    params = {name: str(value) for name, value in params.items()}
+    # newlines would break the generated G-Code into separate commands
+    params = {name: str(value).replace('\r', ' ').replace('\n', ' ')
+              for name, value in params.items()}
     context = template.create_template_context()
     context['params'] = params
     context['rawparams'] = ' '.join(["%s=%s" % item

@@ -9,7 +9,8 @@ import types
 import unittest
 
 from fakes import FakeConfig, FakeError, FakeLegacyProbe, FakeMCUEndstop
-from fakes import FakePrinter, FakeProbe
+from fakes import FakeOldDefaultsProbe, FakePrinter, FakeProbe
+from fakes import FakeRecordingMCUEndstop, FakeTemplate
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -127,6 +128,41 @@ class RuntimeContractValidatorTest(unittest.TestCase):
         klipper_compat.validate_runtime_contract(
             printer, probe, 'z_calibration')
 
+    def test_old_probe_default_attributes_pass_runtime_contract(self):
+        probe = FakeOldDefaultsProbe()
+        printer = FakePrinter(probe)
+        # The modern defaults API is absent, so the deprecated attribute
+        # shape is the only thing that can satisfy probe_defaults here.
+        self.assertFalse(hasattr(probe, 'get_probe_params'))
+        self.assertFalse(hasattr(probe, 'get_offsets'))
+        klipper_compat.validate_runtime_contract(
+            printer, probe, 'z_calibration')
+
+    def test_incomplete_probe_default_attributes_fail_contract(self):
+        # Every deprecated attribute is read by ProbeCompat, so a partial
+        # legacy shape must not be accepted as the legacy API.
+        for attr in ['sample_count', 'samples_tolerance', 'samples_retries',
+                     'lift_speed', 'samples_result', 'z_offset']:
+            probe = FakeOldDefaultsProbe()
+            delattr(probe, attr)
+            printer = FakePrinter(probe)
+            with self.subTest(attr=attr):
+                self.assert_contract_fails(printer, probe, 'probe_defaults')
+
+    def test_failed_object_lookup_fails_runtime_contract(self):
+        # A printer without a homing object raises from lookup_object().
+        # The validator has to translate that into its named contract
+        # instead of leaking the raw lookup error.
+        printer = FakePrinter()
+        probe = printer.objects['probe']
+        printer.objects.pop('homing')
+        with self.assertRaises(FakeError) as caught:
+            klipper_compat.validate_runtime_contract(
+                printer, probe, 'z_calibration')
+        message = str(caught.exception)
+        self.assertIn('homing_probing_move', message)
+        self.assertIn('object lookup failed', message)
+
     def test_missing_homing_probing_move_fails_runtime_contract(self):
         printer = FakePrinter()
         probe = printer.objects['probe']
@@ -206,6 +242,85 @@ class RuntimeContractValidatorTest(unittest.TestCase):
             klipper_compat.validate_runtime_contract(
                 printer, printer.objects['probe'], 'z_calibration',
                 error_gcode=error_gcode)
+
+
+class EndstopWrapperTest(unittest.TestCase):
+    """Covers MCU endstop forwarding used by homing.probing_move()."""
+
+    # The wrapper is what z_calibration hands to homing.probing_move(), so
+    # Klipper calls get_steppers(), home_start(), home_wait(), and
+    # query_endstop() on it during a real probing move.
+    def setUp(self):
+        self.endstop = FakeRecordingMCUEndstop()
+        self.wrapper = klipper_compat.EndstopWrapper(self.endstop)
+
+    def test_wrapper_keeps_the_wrapped_mcu_endstop(self):
+        self.assertIs(self.wrapper.mcu_endstop, self.endstop)
+
+    def test_get_mcu_is_forwarded(self):
+        self.assertIs(self.wrapper.get_mcu(), self.endstop.mcu)
+        self.assertEqual(self.endstop.calls, [('get_mcu', (), {})])
+
+    def test_add_stepper_is_forwarded(self):
+        stepper = object()
+        self.assertIs(self.wrapper.add_stepper(stepper),
+                      self.endstop.add_stepper_result)
+        self.assertEqual(self.endstop.calls,
+                         [('add_stepper', (stepper,), {})])
+
+    def test_get_steppers_is_forwarded(self):
+        self.assertIs(self.wrapper.get_steppers(), self.endstop.steppers)
+        self.assertEqual(self.endstop.calls, [('get_steppers', (), {})])
+
+    def test_home_start_forwards_args_and_kwargs(self):
+        result = self.wrapper.home_start(1.0, 2.0, 3.0, triggered=False,
+                                         rest_time=0.25)
+        self.assertIs(result, self.endstop.home_start_result)
+        self.assertEqual(self.endstop.calls,
+                         [('home_start', (1.0, 2.0, 3.0),
+                           {'triggered': False, 'rest_time': 0.25})])
+
+    def test_home_wait_forwards_args_and_kwargs(self):
+        result = self.wrapper.home_wait(4.5, home_end_time=6.5)
+        self.assertIs(result, self.endstop.home_wait_result)
+        self.assertEqual(self.endstop.calls,
+                         [('home_wait', (4.5,),
+                           {'home_end_time': 6.5})])
+
+    def test_query_endstop_is_forwarded(self):
+        self.assertTrue(self.wrapper.query_endstop(12.5))
+        self.assertEqual(self.endstop.calls,
+                         [('query_endstop', (12.5,), {})])
+
+    def test_wrapped_z_endstop_forwards_to_the_found_endstop(self):
+        printer = FakePrinter()
+        endstop = FakeRecordingMCUEndstop()
+        printer.query_endstops.endstops = [(endstop, 'z')]
+        compat = klipper_compat.HomingCompat(printer)
+        z_endstop = compat.get_z_endstop(printer.query_endstops,
+                                         'z_calibration')
+        self.assertIs(z_endstop.get_steppers(), endstop.steppers)
+
+
+class RunGcodeTemplateTest(unittest.TestCase):
+    """Covers parameter stringification of G-Code template runs."""
+
+    def test_multiline_value_stays_on_one_line(self):
+        template = FakeTemplate()
+        klipper_compat.run_gcode_template(template,
+                                          {'ERROR': 'first\nsecond\r\nthird'})
+        context = template.contexts[0]
+        self.assertEqual(context['params']['ERROR'],
+                         'first second  third')
+        self.assertEqual(context['rawparams'],
+                         'ERROR=first second  third')
+
+    def test_single_line_value_is_unchanged(self):
+        template = FakeTemplate()
+        klipper_compat.run_gcode_template(template, {'Z': 3.5})
+        context = template.contexts[0]
+        self.assertEqual(context['params']['Z'], '3.5')
+        self.assertEqual(context['rawparams'], 'Z=3.5')
 
 
 if __name__ == '__main__':
