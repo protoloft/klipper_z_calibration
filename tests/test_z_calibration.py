@@ -85,6 +85,17 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
         self.assertEqual(self.printer.pins.setup_calls,
                          [('endstop', '^!PA1')])
 
+    def test_endstop_pin_strips_every_modifier(self):
+        # '~' selects the other pullup direction and is as valid as '^'.
+        # Leaving it in place made Klipper reject the descriptor with
+        # "Invalid pin description" before the endstop was even created.
+        for pin in ['~PA1', '~!PA1', '^ !PA1', ' !PA1 ']:
+            self.setUp()
+            self.make_helper(pin=pin)
+            self.assertEqual(self.printer.pins.allowed_multi_use, ['PA1'])
+            self.assertEqual(self.printer.pins.setup_calls,
+                             [('endstop', pin)])
+
     def test_endstop_is_registered_under_the_section_name(self):
         # Registering it as 'z' or 'stepper_z' would make the homing
         # endstop lookup find the calibration endstop instead.

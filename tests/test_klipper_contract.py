@@ -94,10 +94,15 @@ class KlipperContractTest(unittest.TestCase):
         """Return source for the pin setup a plugin-owned endstop needs."""
         return (
             "class PrinterPins:\n"
+            "    def parse_pin(self, pin_desc, can_invert=False,\n"
+            "                  can_pullup=False):\n"
+            "        if [c for c in '^~!:' if c in pin]:\n"
+            "            raise error('Invalid pin description')\n"
+            "        return {}\n"
             "    def setup_pin(self, pin_type, pin_desc):\n"
             "        pass\n"
             "    def allow_multi_use_pin(self, pin_desc):\n"
-            "        pass\n")
+            "        self.parse_pin(pin_desc)\n")
 
     def valid_query_endstops_source(self):
         """Return source for the endstop registration of QUERY_ENDSTOPS."""
@@ -360,13 +365,37 @@ class KlipperContractTest(unittest.TestCase):
         # Sharing the pin with another consumer depends on this call.
         pins_source = self.valid_pins_source().replace(
             "    def allow_multi_use_pin(self, pin_desc):\n"
-            "        pass\n", "")
+            "        self.parse_pin(pin_desc)\n", "")
         tempdir, root = self.make_tree(pins_source=pins_source)
         with tempdir:
             errors = check_contract.check_klipper_contract(root)
         self.assertIn(
             'Klipper contract failed: pins allow_multi_use_pin not found',
             errors)
+
+    def test_multi_use_pin_taking_modifiers_fails(self):
+        # PinEndstop strips '^', '~' and '!' because allow_multi_use_pin()
+        # parses without them. If it ever accepted them, the stripping would
+        # have to be revisited instead of silently staying in place.
+        pins_source = self.valid_pins_source().replace(
+            "        self.parse_pin(pin_desc)\n",
+            "        self.parse_pin(pin_desc, True, True)\n")
+        tempdir, root = self.make_tree(pins_source=pins_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: allow_multi_use_pin no longer parses'
+            ' a bare pin name', errors)
+
+    def test_changed_pin_modifier_set_fails(self):
+        # A fourth modifier character would have to be added to
+        # _PIN_MODIFIERS in klipper_compat.py.
+        pins_source = self.valid_pins_source().replace("'^~!:'", "'^~!%:'")
+        tempdir, root = self.make_tree(pins_source=pins_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: pin modifier set not found', errors)
 
     def test_missing_query_endstops_register_endstop_fails(self):
         tempdir, root = self.make_tree(

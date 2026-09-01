@@ -94,6 +94,26 @@ def function_calls(tree, class_name, function_name, callee_name):
     return False
 
 
+def function_call_args(tree, class_name, function_name, callee_name):
+    """Return (positional, keyword) counts of a call inside a method."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef) or node.name != class_name:
+            continue
+        for child in node.body:
+            if not isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if child.name != function_name:
+                continue
+            for call in ast.walk(child):
+                if not isinstance(call, ast.Call):
+                    continue
+                func = call.func
+                name = getattr(func, 'attr', None) or getattr(func, 'id', None)
+                if name == callee_name:
+                    return len(call.args), len(call.keywords)
+    return None
+
+
 def class_has_function(tree, class_name, function_name):
     """Return whether a class defines a specific method."""
     for node in ast.walk(tree):
@@ -277,11 +297,21 @@ def validate_pins(root, errors):
     # on a plain pin, the way tools_calibrate does. Sharing that pin with
     # another consumer requires allow_multi_use_pin(), because lookup_pin()
     # rejects an already active pin otherwise.
-    _source, tree = read_source(root, 'klippy/pins.py')
+    source, tree = read_source(root, 'klippy/pins.py')
     require(class_has_function(tree, 'PrinterPins', 'setup_pin'),
             'pins setup_pin not found', errors)
     require(class_has_function(tree, 'PrinterPins', 'allow_multi_use_pin'),
             'pins allow_multi_use_pin not found', errors)
+    # allow_multi_use_pin() parses the descriptor without can_invert or
+    # can_pullup, so it only accepts a bare pin name. That is why
+    # PinEndstop strips the modifiers before calling it.
+    require(function_call_args(tree, 'PrinterPins', 'allow_multi_use_pin',
+                               'parse_pin') == (1, 0),
+            'allow_multi_use_pin no longer parses a bare pin name', errors)
+    # The set of characters a bare pin name must not contain, matched without
+    # the surrounding quotes because Kalico is formatted with double ones. A
+    # new modifier here means _PIN_MODIFIERS in klipper_compat.py needs it too.
+    require('^~!:' in source, 'pin modifier set not found', errors)
     # The own endstop is registered so that QUERY_ENDSTOPS keeps showing it.
     _qsource, qtree = read_source(root, 'klippy/extras/query_endstops.py')
     require(class_has_function(qtree, 'QueryEndstops', 'register_endstop'),

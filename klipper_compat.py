@@ -23,6 +23,16 @@ _Z_AXIS = 2
 # the section name ('stepper_z'), older Klipper and Kalico the short name.
 _Z_ENDSTOP_NAMES = ['stepper_z', 'z']
 
+# Leading modifiers of a Klipper pin descriptor: '^' and '~' select the pullup
+# direction, '!' inverts, and each may be followed by whitespace. See
+# PrinterPins.parse_pin() in klippy/pins.py.
+_PIN_MODIFIERS = '^~! '
+
+
+def _strip_pin_modifiers(pin):
+    """Return a pin descriptor without its pullup and invert modifiers."""
+    return pin.strip().lstrip(_PIN_MODIFIERS)
+
 
 def _missing_probing_endstop_methods(endstop):
     """Return MCU endstop methods missing from a probing target."""
@@ -325,9 +335,12 @@ class PinEndstop(EndstopWrapper):
         ppins = printer.lookup_object('pins')
         # Several endstop objects on one physical pin are an established
         # pattern, not a workaround: tools_calibrate builds three of them
-        # from the same pin. allow_multi_use_pin() parses without invert or
-        # pullup support, so it needs the bare pin name.
-        ppins.allow_multi_use_pin(pin.replace('^', '').replace('!', ''))
+        # from the same pin. allow_multi_use_pin() calls parse_pin() without
+        # can_invert or can_pullup, so every modifier has to be stripped:
+        # a descriptor that still carries one is rejected outright. Klipper
+        # knows three, '^' and '~' for the two pullup directions and '!'
+        # for inversion; setup_pin() below still gets the full descriptor.
+        ppins.allow_multi_use_pin(_strip_pin_modifiers(pin))
         EndstopWrapper.__init__(self, ppins.setup_pin('endstop', pin))
         self.printer = printer
         # Attaching the steppers is not optional. Without them Klipper drops
