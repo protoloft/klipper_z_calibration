@@ -601,8 +601,15 @@ class ZCalibrationTest(unittest.TestCase):
 
     def test_safe_z_height_uses_absolute_move(self):
         helper, printer = make_helper({'safe_z_height': '8'})
-        helper._move_safe_z([0.0, 0.0, 3.0, 0.0], 4.0)
+        printer.toolhead.position = [0.0, 0.0, 3.0, 0.0]
+        helper.move_safe_z(4.0)
         self.assertEqual(printer.toolhead.moves[-1], ([None, None, 8.0], 4.0))
+
+    def test_safe_z_height_skips_the_move_when_already_above(self):
+        helper, printer = make_helper({'safe_z_height': '8'})
+        printer.toolhead.position = [0.0, 0.0, 9.0, 0.0]
+        helper.move_safe_z(4.0)
+        self.assertEqual(printer.toolhead.moves, [])
 
     def test_position_resolution_paths(self):
         helper, printer = make_helper({
@@ -667,7 +674,7 @@ class ZCalibrationTest(unittest.TestCase):
             'speed': '20',
         })
         printer.homing.results = [[5.0, 6.0, 1.0]]
-        pos = helper._probe(FakeGcmd(), helper.z_endstop, -2.0, 3.0,
+        pos = helper.probe_endstop(FakeGcmd(), helper.z_endstop, -2.0, 3.0,
                             wiggle=True)
         self.assertEqual(pos, [5.0, 6.0, 1.0])
         self.assertEqual(printer.toolhead.moves[-3:],
@@ -697,9 +704,9 @@ class ZCalibrationTest(unittest.TestCase):
 
     def test_calc_median_handles_even_and_odd_samples(self):
         helper, _printer = make_helper()
-        self.assertEqual(helper._calc_median([[0, 0, 1], [0, 0, 3]])[2], 2.0)
+        self.assertEqual(helper.calc_median([[0, 0, 1], [0, 0, 3]])[2], 2.0)
         self.assertEqual(
-            helper._calc_median([[0, 0, 3], [0, 0, 1], [0, 0, 2]])[2],
+            helper.calc_median([[0, 0, 3], [0, 0, 1], [0, 0, 2]])[2],
             2)
 
     def test_calibration_uses_probe_session_test_z_not_bed_z(self):

@@ -274,10 +274,9 @@ class ZCalibrationHelper:
         sample_retract_dist = gcmd.get_float("SAMPLE_RETRACT_DIST",
                                              self.retract_dist, above=0.)
         nozzle_site = self._get_nozzle_site(gcmd)
-        pos = self.toolhead_compat.get_position()
-        self._move_safe_z(pos, lift_speed)
+        self.move_safe_z(lift_speed)
         # move to z-endstop position
-        self._move(list(nozzle_site), self.speed)
+        self.move(list(nozzle_site), self.speed)
         pos = self.toolhead_compat.get_position()
         gcmd.respond_info("%s at X:%.3f Y:%.3f Z:%.3f"
                           " (samples=%d retract=%.3f"
@@ -289,18 +288,19 @@ class ZCalibrationHelper:
         positions = []
         while len(positions) < sample_count:
             # Probe position
-            pos = self._probe(gcmd, self.z_endstop, self.position_min, speed,
-                              retract=False)
+            pos = self.probe_endstop(gcmd, self.z_endstop,
+                                     self.position_min, speed,
+                                     retract=False)
             positions.append(pos)
             # Retract
             liftpos = [None, None, pos[2] + sample_retract_dist]
-            self._move(liftpos, lift_speed)
+            self.move(liftpos, lift_speed)
         # Calculate maximum, minimum and average values
         max_value = max([p[2] for p in positions])
         min_value = min([p[2] for p in positions])
         range_value = max_value - min_value
-        avg_value = self._calc_mean(positions)[2]
-        median = self._calc_median(positions)[2]
+        avg_value = self.calc_mean(positions)[2]
+        median = self.calc_median(positions)[2]
         # calculate the standard deviation
         deviation_sum = 0
         for i in range(len(positions)):
@@ -414,9 +414,12 @@ class ZCalibrationHelper:
         except Exception:
             logging.exception("error_gcode failed")
 
-    # Movement and probing primitives
-    def _probe(self, gcmd, mcu_endstop, z_position, speed, wiggle=False,
-               retract=True):
+    # Shared motion and sampling primitives. CalibrationRun drives every move
+    # and every sample through these, so they are the API of the pair and are
+    # named accordingly - the leading underscore they used to carry claimed a
+    # privacy that did not exist.
+    def probe_endstop(self, gcmd, mcu_endstop, z_position, speed,
+                      wiggle=False, retract=True):
         """Probe a given endstop at the current XY position."""
         pos = self.toolhead_compat.get_position()
         pos[2] = z_position
@@ -424,14 +427,14 @@ class ZCalibrationHelper:
         curpos = self.homing_compat.probing_move(mcu_endstop, pos, speed)
         # retract
         if retract:
-            self._move([None, None, curpos[2] + self.retract_dist],
+            self.move([None, None, curpos[2] + self.retract_dist],
                        self.lift_speed)
         if wiggle and self.wiggle_offsets is not None:
-            self._move([curpos[0] + self.wiggle_offsets[0],
+            self.move([curpos[0] + self.wiggle_offsets[0],
                         curpos[1] + self.wiggle_offsets[1],
                         None],
                        self.speed)
-            self._move([curpos[0], curpos[1], None], self.speed)
+            self.move([curpos[0], curpos[1], None], self.speed)
         self.gcode.respond_info("%s: probe at %.3f,%.3f is z=%.6f"
                                 % (gcmd.get_command(), curpos[0],
                                    curpos[1], curpos[2]))
@@ -444,24 +447,25 @@ class ZCalibrationHelper:
         if not self.toolhead_compat.is_axis_homed('z'):
             raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
 
-    def _move(self, coord, speed):
+    def move(self, coord, speed):
         """Move through Klipper's toolhead wrapper."""
         self.toolhead_compat.manual_move(coord, speed)
 
-    def _move_safe_z(self, pos, lift_speed):
+    def move_safe_z(self, lift_speed):
         """Lift to safe_z_height when the current Z is below it."""
+        pos = self.toolhead_compat.get_position()
         if pos[2] < self.safe_z_height:
             # no safe z position, better to move up (absolute)
-            self._move([None, None, self.safe_z_height], lift_speed)
+            self.move([None, None, self.safe_z_height], lift_speed)
 
     # Calculation and logging helpers
-    def _calc_mean(self, positions):
+    def calc_mean(self, positions):
         """Return the coordinate-wise mean of sampled positions."""
         count = float(len(positions))
         return [sum([pos[i] for pos in positions]) / count
                 for i in range(3)]
 
-    def _calc_median(self, positions):
+    def calc_median(self, positions):
         """Return the median Z sample, averaging the middle pair if needed."""
         z_sorted = sorted(positions, key=(lambda p: p[2]))
         middle = len(positions) // 2
@@ -469,7 +473,7 @@ class ZCalibrationHelper:
             # odd number of samples
             return z_sorted[middle]
         # even number of samples
-        return self._calc_mean(z_sorted[middle-1:middle+1])
+        return self.calc_mean(z_sorted[middle-1:middle+1])
 
     def _log_params(self, gcmd, switch_offset, nozzle_site, switch_site,
                     bed_site):
@@ -494,7 +498,11 @@ class ZCalibrationHelper:
 
 
 class CalibrationRun:
-    """Executes one CALIBRATE_Z command with resolved runtime state."""
+    """Executes one CALIBRATE_Z command with resolved runtime state.
+
+    Motion and sampling run through the helper's shared primitives:
+    move(), move_safe_z(), probe_endstop(), calc_mean() and calc_median().
+    """
 
     def __init__(self, helper, gcmd):
         self.helper = helper
@@ -517,28 +525,30 @@ class CalibrationRun:
                        wiggle=False):
         """Move to a site and sample the given endstop with retry handling."""
         pos = self.toolhead_compat.get_position()
-        self.helper._move_safe_z(pos, self.helper.lift_speed)
+        self.helper.move_safe_z(self.helper.lift_speed)
         # move to position
         if split_xy:
-            self.helper._move([site[0], pos[1], None], self.helper.speed)
-            self.helper._move([site[0], site[1], site[2]], self.helper.speed)
+            self.helper.move([site[0], pos[1], None], self.helper.speed)
+            self.helper.move([site[0], site[1], site[2]], self.helper.speed)
         else:
-            self.helper._move(site, self.helper.speed)
+            self.helper.move(site, self.helper.speed)
         if check_probe:
             # check if probe is attached and switch is closed
             self._check_probe_attached()
         if self.helper.first_fast:
             # first probe just to get down faster
-            self.helper._probe(self.gcmd, endstop, self.helper.position_min,
-                               self.helper.probing_speed, wiggle=wiggle)
+            self.helper.probe_endstop(self.gcmd, endstop,
+                                      self.helper.position_min,
+                                      self.helper.probing_speed,
+                                      wiggle=wiggle)
         retries = 0
         positions = []
         while len(positions) < self.helper.samples:
             # probe with second probing speed
-            curpos = self.helper._probe(self.gcmd, endstop,
-                                        self.helper.position_min,
-                                        self.helper.second_speed,
-                                        wiggle=wiggle)
+            curpos = self.helper.probe_endstop(self.gcmd, endstop,
+                                               self.helper.position_min,
+                                               self.helper.second_speed,
+                                               wiggle=wiggle)
             positions.append(curpos[:3])
             # check tolerance
             z_positions = [p[2] for p in positions]
@@ -553,14 +563,13 @@ class CalibrationRun:
                 positions = []
         # calculate result
         if self.helper.samples_result == 'median':
-            return self.helper._calc_median(positions)[2]
-        return self.helper._calc_mean(positions)[2]
+            return self.helper.calc_median(positions)[2]
+        return self.helper.calc_mean(positions)[2]
 
     def _probe_bed_on_site(self, site):
         """Probe the bed using the Klipper probe session path."""
-        pos = self.toolhead_compat.get_position()
-        self.helper._move_safe_z(pos, self.helper.lift_speed)
-        self.helper._move(site, self.helper.speed)
+        self.helper.move_safe_z(self.helper.lift_speed)
+        self.helper.move(site, self.helper.speed)
         self._check_probe_attached()
         if self.helper.first_fast:
             self.probe_compat.run_probe(self.helper.probing_speed, samples=1)
