@@ -206,6 +206,29 @@ class ZCalibrationTest(unittest.TestCase):
                 with self.assertRaises(FakeError):
                     z_calibration.ZCalibrationHelper(config)
 
+    def test_float_options_reject_non_finite_values(self):
+        # Klipper's own bounds let 'inf' through: it is above every minimum,
+        # so it would reach a probing speed, a safe Z height or the depth a
+        # probing move drives to. 'position_min' has no bound at all.
+        options = ['switch_offset', 'speed', 'safe_z_height',
+                   'samples_tolerance', 'lift_speed', 'probing_speed',
+                   'probing_second_speed', 'probing_retract_dist',
+                   'position_min']
+        for option in options:
+            for raw in ['inf', '-inf', 'nan']:
+                with self.subTest(option=option, raw=raw):
+                    printer = FakePrinter()
+                    config = FakeConfig(printer, {option: raw})
+                    with self.assertRaises(FakeError):
+                        z_calibration.ZCalibrationHelper(config)
+
+    def test_float_options_still_accept_finite_values(self):
+        printer = FakePrinter()
+        config = FakeConfig(printer, {'speed': '42.5', 'position_min': '-2.0'})
+        helper = z_calibration.ZCalibrationHelper(config)
+        self.assertAlmostEqual(helper.speed, 42.5)
+        self.assertAlmostEqual(helper.position_min, -2.0)
+
     def test_optional_gcode_rejects_blank_value(self):
         for raw in ['', '   ']:
             for option in ['offset_gcode', 'error_gcode']:

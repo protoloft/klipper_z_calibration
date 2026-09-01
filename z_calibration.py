@@ -43,25 +43,29 @@ class ZCalibrationHelper:
         self.bed_mesh_compat = BedMeshCompat()
         self.homing_compat = HomingCompat(self.printer)
         self.toolhead_compat = ToolheadCompat(self.printer)
-        self.switch_offset = config.getfloat('switch_offset', None, above=0.)
+        self.switch_offset = self._getfloat(config, 'switch_offset', None,
+                                            above=0.)
         self.offset_margins = self._get_offset_margins(
             config, 'offset_margins', '-1.0,1.0')
-        self.speed = config.getfloat('speed', 50.0, above=0.)
-        self.safe_z_height = config.getfloat('safe_z_height', None, above=0.)
+        self.speed = self._getfloat(config, 'speed', 50.0, above=0.)
+        self.safe_z_height = self._getfloat(config, 'safe_z_height', None,
+                                            above=0.)
         self.samples = config.getint('samples', None, minval=1)
-        self.tolerance = config.getfloat('samples_tolerance', None, above=0.)
+        self.tolerance = self._getfloat(config, 'samples_tolerance', None,
+                                        above=0.)
         self.retries = config.getint('samples_tolerance_retries',
                                      None, minval=0)
         atypes = {'none': None, 'median': 'median', 'average': 'average'}
         self.samples_result = config.getchoice('samples_result', atypes,
                                                'none')
-        self.lift_speed = config.getfloat('lift_speed', None, above=0.)
-        self.probing_speed = config.getfloat('probing_speed', None, above=0.)
-        self.second_speed = config.getfloat('probing_second_speed',
-                                            None, above=0.)
-        self.retract_dist = config.getfloat('probing_retract_dist',
-                                            None, above=0.)
-        self.position_min = config.getfloat('position_min', None)
+        self.lift_speed = self._getfloat(config, 'lift_speed', None, above=0.)
+        self.probing_speed = self._getfloat(config, 'probing_speed', None,
+                                            above=0.)
+        self.second_speed = self._getfloat(config, 'probing_second_speed',
+                                           None, above=0.)
+        self.retract_dist = self._getfloat(config, 'probing_retract_dist',
+                                           None, above=0.)
+        self.position_min = self._getfloat(config, 'position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
         self.endstop_pin = config.get('endstop_pin', None)
         self.nozzle_site = self._get_xy(config, "nozzle_xy_position", True)
@@ -146,6 +150,16 @@ class ZCalibrationHelper:
         value = float(raw_value)
         if not math.isfinite(value):
             raise ValueError()
+        return value
+
+    def _getfloat(self, config, name, default, **kwargs):
+        """Read a float config option and reject NaN or infinity."""
+        # Klipper's bounds do not cover this: 'inf' passes above=0. and ends
+        # up in a probing speed, a safe Z height or a probing depth. 'nan'
+        # fails a bound test, but only where one is configured.
+        value = config.getfloat(name, default, **kwargs)
+        if value is not None and not math.isfinite(value):
+            raise config.error("Unable to parse %s in %s" % (name, self.name))
         return value
 
     def _get_offset_margins(self, config, name, default):
