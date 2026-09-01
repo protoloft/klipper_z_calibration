@@ -1134,6 +1134,52 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(session.run_gcmds[0].params['SAMPLES'], '1')
         self.assertEqual(session.run_gcmds[1].params['PROBE_SPEED'], '2.0')
 
+    BED_RETRACT_VALUES = {
+        'switch_offset': '0.5',
+        'samples': '1',
+        'samples_tolerance': '0.5',
+        'samples_tolerance_retries': '0',
+        'probing_second_speed': '2',
+        'probing_retract_dist': '1.5',
+        'lift_speed': '9',
+        'safe_z_height': '5',
+    }
+
+    def test_both_bed_probing_paths_end_at_the_same_height(self):
+        # The session path and the legacy fallback have to leave the toolhead
+        # in the same place, or end_gcode starts from a different height
+        # depending on the firmware.
+        session_printer = FakePrinter()
+        session = FakeProbeSession(
+            [ProbeResult(0.0, 0.0, 0.0, 1.0, 2.0, 4.0)],
+            toolhead=session_printer.toolhead)
+        session_printer.probe = FakeProbe(session=session)
+        session_printer.objects['probe'] = session_printer.probe
+        helper = make_connected_helper(session_printer,
+                                       self.BED_RETRACT_VALUES)
+        helper.handle_home_rails_end(None, [z_rail(session_printer)])
+        run = z_calibration.CalibrationRun(helper, FakeGcmd())
+        run.probe_compat.start()
+        run._probe_bed_on_site([1.0, 2.0, None])
+        session_z = session_printer.toolhead.position[2]
+
+        legacy_probe = FakeLegacyProbe()
+        legacy_probe.mcu_probe = FakeMCUEndstop()
+        legacy_printer = FakePrinter(legacy_probe)
+        helper = make_connected_helper(legacy_printer,
+                                       self.BED_RETRACT_VALUES)
+        helper.handle_home_rails_end(None, [z_rail(legacy_printer)])
+        run = z_calibration.CalibrationRun(helper, FakeGcmd())
+        run.probe_compat.start()
+        legacy_printer.homing.results = [[1.0, 2.0, 4.0]]
+        run._probe_on_site(run.probe_compat.get_legacy_probe_endstop(),
+                           [1.0, 2.0, None], check_probe=True)
+        legacy_z = legacy_printer.toolhead.position[2]
+
+        # Trigger at 4.0 plus probing_retract_dist on both paths.
+        self.assertEqual(session_z, 5.5)
+        self.assertEqual(legacy_z, session_z)
+
     def test_probe_bed_first_fast_retracts_before_the_samples(self):
         # Klipper's session retracts between its own samples but not after
         # the last one. Without a retract here the slow probe would start on

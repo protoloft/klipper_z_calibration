@@ -598,22 +598,29 @@ class CalibrationRun:
         if self.helper.first_fast:
             # first probe just to get down faster
             self.probe_compat.run_probe(self.helper.probing_speed, samples=1)
-            # Klipper's probe session retracts between its own samples but
-            # not after the last one, so the toolhead is left standing on the
-            # trigger point with the probe still pressed. The next probing
-            # move would then start already triggered and either fail the
-            # "Probe triggered prior to movement" check or report the fast
-            # probe's result again. probe_endstop() retracts for the nozzle
-            # and switch sites for the same reason.
-            pos = self.toolhead_compat.get_position()
-            self.helper.move([None, None, pos[2] + self.helper.retract_dist],
-                             self.helper.lift_speed)
+            self._retract_from_trigger()
         probe_result = self.probe_compat.run_probe(self.helper.second_speed)
         curpos = self.probe_compat.get_test_position(probe_result)
+        self._retract_from_trigger()
         self.gcode.respond_info("%s: probe at %.3f,%.3f is z=%.6f"
                                 % (self.gcmd.get_command(), curpos[0],
                                    curpos[1], curpos[2]))
         return curpos[2]
+
+    def _retract_from_trigger(self):
+        """Lift off a trigger position by the configured retract distance.
+
+        Klipper's probe session retracts between its own samples but not
+        after the last one, which leaves the toolhead standing on the
+        trigger point with the probe still pressed. A following probing
+        move would start already triggered and either fail the "Probe
+        triggered prior to movement" check or report the previous result
+        again. probe_endstop() retracts after every sample, so doing it here
+        too leaves both bed probing paths in the same state.
+        """
+        pos = self.toolhead_compat.get_position()
+        self.helper.move([None, None, pos[2] + self.helper.retract_dist],
+                         self.helper.lift_speed)
 
     def _check_probe_attached(self):
         """Verify the detachable probe switch is not already triggered."""
