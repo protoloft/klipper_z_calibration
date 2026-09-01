@@ -138,10 +138,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-              release_api="repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
-              release_id="$(gh api "$release_api" --jq '.id')"
-              is_draft="$(gh api "$release_api" --jq '.draft')"
+          # The REST releases/tags/<tag> endpoint resolves only published
+          # releases and answers 404 for a draft, while "gh release view"
+          # also finds drafts. Read the id and the draft state from the
+          # same lookup that decides this branch, so that re-running the
+          # workflow against an existing draft does not fail.
+          if release_json="$(gh release view "$RELEASE_TAG" \
+                  --json databaseId,isDraft 2>/dev/null)"; then
+              release_id="$(jq -r '.databaseId' <<<"$release_json")"
+              is_draft="$(jq -r '.isDraft' <<<"$release_json")"
               if [ "$is_draft" != "true" ]; then
                   echo "Release $RELEASE_TAG already exists and is not a draft" >&2
                   exit 1

@@ -158,7 +158,6 @@ class MoonrakerUpdateTest(unittest.TestCase):
                 created,
                 ['moonraker.conf.bak', 'moonraker.conf.bak.001',
                  'moonraker.conf.bak.002', 'moonraker.conf.bak.003'])
-            self.assertEqual(sorted(created), created)
 
     def test_exhausted_backup_slots_leave_the_config_untouched(self):
         with tempfile.TemporaryDirectory() as tempdir:
@@ -300,7 +299,9 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertNotIn('--channel "${{', validate_ref)
 
     def test_release_workflow_has_no_second_tag_classification(self):
-        text = self.workflow_text()
+        # Comment-free, so that a future comment mentioning one of the
+        # banned patterns cannot fail the whole-file assertions below.
+        text = self.without_comments(self.workflow_text())
         # scripts/check_release.py is the single source of truth. Any tag
         # regex or output writing in the workflow would silently drift.
         for pattern in ['stable_re', 'beta_re', 'BASH_REMATCH',
@@ -390,7 +391,7 @@ class ReleaseWorkflowTest(unittest.TestCase):
 
     def test_release_publish_job_does_not_checkout_source(self):
         text = self.workflow_text()
-        draft_release = text[text.index('  draft-release:'):]
+        draft_release = self.job_block(text, 'draft-release')
         self.assertNotIn('actions/checkout', draft_release)
         self.assertIn('uses: actions/download-artifact@', draft_release)
         self.assertIn('uses: actions/upload-artifact@', text)
@@ -426,12 +427,18 @@ class ReleaseWorkflowTest(unittest.TestCase):
         self.assertGreater(checked, 0, "no run steps were checked")
 
     def test_release_workflow_updates_existing_draft_assets(self):
-        text = self.workflow_text()
-        self.assertIn('gh release view "$RELEASE_TAG"', text)
+        draft_release = self.without_comments(
+            self.job_block(self.workflow_text(), 'draft-release'))
+        self.assertIn('gh release view "$RELEASE_TAG"', draft_release)
+        # The draft update must take the release id from "gh release view",
+        # which resolves drafts. The REST releases/tags/<tag> endpoint
+        # answers 404 for a draft and would fail every workflow re-run.
+        self.assertIn('--json databaseId,isDraft', draft_release)
+        self.assertNotIn('releases/tags/', draft_release)
         self.assertIn(
             'gh release upload "$RELEASE_TAG" dist/*.tar.gz --clobber',
-            text)
-        self.assertIn('already exists and is not a draft', text)
+            draft_release)
+        self.assertIn('already exists and is not a draft', draft_release)
 
 
 if __name__ == '__main__':
