@@ -1,0 +1,37 @@
+name: Klipper And Kalico Compatibility
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-contract:
+    name: Firmware contracts
+    runs-on: ubuntu-latest
+    # The job clones two firmware repositories; a hanging network fetch
+    # must not occupy a runner for the default six hours.
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # actions/checkout@v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # actions/setup-python@v6.2.0
+        with:
+          python-version: "3.13"
+
+      - name: Install lint tool
+        run: python -m pip install ruff==0.16.4
+
+      - name: Check repository
+        run: python scripts/check_all.py
+
+      - name: Check firmware contracts
+        run: python scripts/check_firmware_compat.py
