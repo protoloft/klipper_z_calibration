@@ -44,6 +44,27 @@ def z_rail(printer):
     return FakeEndstopRail(printer.query_endstops.endstops)
 
 
+def calibration_values(**overrides):
+    """Return a complete CALIBRATE_Z configuration with overrides."""
+    values = {
+        'switch_offset': '0.5',
+        'offset_margins': '-10,10',
+        'samples': '1',
+        'samples_tolerance': '0.5',
+        'samples_tolerance_retries': '0',
+        'lift_speed': '10',
+        'safe_z_height': '5',
+        'probing_speed': '6',
+        'probing_second_speed': '2',
+        'probing_retract_dist': '1',
+        'nozzle_xy_position': '10,10',
+        'switch_xy_position': '20,20',
+        'bed_xy_position': '30,30',
+    }
+    values.update(overrides)
+    return values
+
+
 class ZCalibrationEndstopPinTest(unittest.TestCase):
     """Covers the plugin-owned calibration endstop on a configured pin."""
 
@@ -51,8 +72,6 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
     # helper object, which cannot be probed. The plugin then sets up its
     # own endstop on the configured pin and keeps using the rail of the
     # virtual endstop for the homing settings.
-    VIRTUAL_ENDSTOP = None
-
     def setUp(self):
         self.printer = FakePrinter()
         # The probe's HomingViaProbeHelper is not an MCU_endstop, which is
@@ -90,11 +109,13 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
         # Leaving it in place made Klipper reject the descriptor with
         # "Invalid pin description" before the endstop was even created.
         for pin in ['~PA1', '~!PA1', '^ !PA1', ' !PA1 ']:
-            self.setUp()
-            self.make_helper(pin=pin)
-            self.assertEqual(self.printer.pins.allowed_multi_use, ['PA1'])
-            self.assertEqual(self.printer.pins.setup_calls,
-                             [('endstop', pin)])
+            with self.subTest(pin=pin):
+                self.setUp()
+                self.make_helper(pin=pin)
+                self.assertEqual(self.printer.pins.allowed_multi_use,
+                                 ['PA1'])
+                self.assertEqual(self.printer.pins.setup_calls,
+                                 [('endstop', pin)])
 
     def test_safe_z_home_is_not_a_nozzle_position_fallback(self):
         # With an endstop_pin the probe homes Z, so home_xy_position is a
@@ -200,6 +221,45 @@ class ZCalibrationTest(unittest.TestCase):
             z_calibration.load_config(config),
             z_calibration.ZCalibrationHelper)
 
+    def test_startup_registers_lifecycle_events_and_commands(self):
+        # Event names and command names are the public wiring: a typo in
+        # either leaves the plugin dead on a real printer while every
+        # direct-call test still passes.
+        printer = FakePrinter()
+        config = FakeConfig(printer)
+        helper = z_calibration.ZCalibrationHelper(config)
+        self.assertIn(helper.handle_connect,
+                      printer.handlers.get('klippy:connect', []))
+        self.assertIn(helper.handle_home_rails_end,
+                      printer.handlers.get('homing:home_rails_end', []))
+        for name in ['CALIBRATE_Z', 'PROBE_Z_ACCURACY',
+                     'CALCULATE_SWITCH_OFFSET']:
+            with self.subTest(command=name):
+                command, desc = printer.gcode.commands[name]
+                self.assertTrue(callable(command))
+                self.assertTrue(desc)
+
+    def test_calibration_runs_through_registered_handlers(self):
+        # End to end through the registered events and the registered
+        # command, the way klippy drives the plugin.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        printer = FakePrinter(probe)
+        config = FakeConfig(printer, calibration_values())
+        helper = z_calibration.ZCalibrationHelper(config)
+        printer.run_event_handlers('klippy:connect')
+        printer.run_event_handlers('homing:home_rails_end', None,
+                                   [z_rail(printer)])
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        command, _desc = printer.gcode.commands['CALIBRATE_Z']
+        command(FakeGcmd())
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+
     def test_status_reports_last_state(self):
         helper, _printer = make_helper()
         helper.last_state = True
@@ -301,22 +361,8 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
         ])
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        values = {
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-            'error_gcode': 'RESPOND MSG={params.ERROR}',
-        }
+        values = calibration_values(
+            error_gcode='RESPOND MSG={params.ERROR}')
         helper, printer = make_helper(values, probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
@@ -331,22 +377,9 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
         ])
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        helper, printer = make_helper({
-            'switch_offset': '0.5',
-            'offset_margins': '-1,1',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-            'error_gcode': 'RESPOND MSG={params.ERROR}',
-        }, probe)
+        helper, printer = make_helper(calibration_values(
+            offset_margins='-1,1',
+            error_gcode='RESPOND MSG={params.ERROR}'), probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
             [20.0, 20.0, 2.0],
@@ -409,7 +442,7 @@ class ZCalibrationTest(unittest.TestCase):
 
     def test_parse_xy_rejects_non_finite_gcode_parameter(self):
         helper, _printer = make_helper()
-        gcmd = FakeGcmd(params={'NOZZLE_POSITION': 'nan,1'})
+        gcmd = FakeGcmd()
         for raw in ['nan,1', '1,inf', '-inf,1']:
             with self.subTest(raw=raw):
                 with self.assertRaisesRegex(FakeError,
@@ -559,6 +592,33 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertIn('2.000', message)
         self.assertIn('20.000', message)
 
+    def test_handle_connect_prefers_configured_sampling_values(self):
+        # FakeProbe reports samples=1, tolerance=0.1, retries=0,
+        # lift_speed=5.0 and samples_result='average'; none of them may
+        # overwrite an explicitly configured value.
+        helper, _printer = make_helper({
+            'samples': '7',
+            'samples_tolerance': '0.25',
+            'samples_tolerance_retries': '3',
+            'lift_speed': '11',
+            'samples_result': 'median',
+        })
+        self.assertEqual(helper.samples, 7)
+        self.assertAlmostEqual(helper.tolerance, 0.25)
+        self.assertEqual(helper.retries, 3)
+        self.assertAlmostEqual(helper.lift_speed, 11.0)
+        self.assertEqual(helper.samples_result, 'median')
+
+    def test_handle_connect_reads_missing_sampling_values_from_probe(self):
+        helper, _printer = make_helper()
+        self.assertEqual(helper.samples, 1)
+        self.assertAlmostEqual(helper.tolerance, 0.1)
+        self.assertEqual(helper.retries, 0)
+        self.assertAlmostEqual(helper.lift_speed, 5.0)
+        # 'samples_result: none' means "no explicit choice", which
+        # inherits the probe's configured result type.
+        self.assertEqual(helper.samples_result, 'average')
+
     def test_handle_home_rails_end_ignores_non_z_rails(self):
         printer = FakePrinter()
         config = FakeConfig(printer)
@@ -620,6 +680,12 @@ class ZCalibrationTest(unittest.TestCase):
     def test_safe_z_height_skips_the_move_when_already_above(self):
         helper, printer = make_helper({'safe_z_height': '8'})
         printer.toolhead.position = [0.0, 0.0, 9.0, 0.0]
+        helper.move_safe_z(4.0)
+        self.assertEqual(printer.toolhead.moves, [])
+
+    def test_safe_z_height_skips_the_move_at_the_boundary(self):
+        helper, printer = make_helper({'safe_z_height': '8'})
+        printer.toolhead.position = [0.0, 0.0, 8.0, 0.0]
         helper.move_safe_z(4.0)
         self.assertEqual(printer.toolhead.moves, [])
 
@@ -712,7 +778,45 @@ class ZCalibrationTest(unittest.TestCase):
         helper.cmd_PROBE_Z_ACCURACY(gcmd)
         self.assertIn('maximum 0.300000', gcmd.responses[-1])
         self.assertIn('minimum 0.100000', gcmd.responses[-1])
+        self.assertIn('range 0.200000', gcmd.responses[-1])
+        self.assertIn('average 0.200000', gcmd.responses[-1])
         self.assertIn('median 0.200000', gcmd.responses[-1])
+        self.assertIn('standard deviation 0.081650', gcmd.responses[-1])
+
+    def test_probe_z_accuracy_accepts_parameter_overrides(self):
+        helper, printer = make_helper({
+            'nozzle_xy_position': '1,2',
+            'samples': '3',
+            'safe_z_height': '12',
+            'probing_retract_dist': '0.5',
+            'lift_speed': '4',
+            'probing_second_speed': '2',
+        })
+        printer.homing.results = [
+            [1.0, 2.0, 0.1],
+            [1.0, 2.0, 0.2],
+        ]
+        gcmd = FakeGcmd('PROBE_Z_ACCURACY', params={
+            'PROBE_SPEED': '9',
+            'LIFT_SPEED': '6',
+            'SAMPLES': '2',
+            'SAMPLE_RETRACT_DIST': '1.5',
+        })
+        helper.cmd_PROBE_Z_ACCURACY(gcmd)
+        self.assertEqual([call[2] for call in printer.homing.calls],
+                         [9.0, 9.0])
+        # Retracts between the samples: trigger z plus the override.
+        self.assertIn(([None, None, 1.6], 6.0), printer.toolhead.moves)
+        self.assertIn(([None, None, 1.7], 6.0), printer.toolhead.moves)
+
+    def test_probe_z_accuracy_rejects_non_positive_parameters(self):
+        helper, _printer = make_helper({'nozzle_xy_position': '1,2'})
+        for name in ['PROBE_SPEED', 'LIFT_SPEED', 'SAMPLE_RETRACT_DIST',
+                     'SAMPLES']:
+            with self.subTest(param=name):
+                gcmd = FakeGcmd('PROBE_Z_ACCURACY', params={name: '0'})
+                with self.assertRaises(FakeError):
+                    helper.cmd_PROBE_Z_ACCURACY(gcmd)
 
     def test_calc_median_handles_even_and_odd_samples(self):
         helper, _printer = make_helper()
@@ -726,21 +830,7 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
         ])
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        values = {
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }
+        values = calibration_values()
         helper, printer = make_helper(values, probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
@@ -759,22 +849,8 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
         ])
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        values = {
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-            'offset_gcode': 'SET_GCODE_OFFSET Z_ADJUST={params.Z|float}',
-        }
+        values = calibration_values(
+            offset_gcode='SET_GCODE_OFFSET Z_ADJUST={params.Z|float}')
         helper, printer = make_helper(values, probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
@@ -789,24 +865,128 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(offset_template.contexts[0]['rawparams'], 'Z=3.5')
         self.assertEqual(offset_template.contexts[0]['printer'], 'fake')
 
+    def test_calibration_probes_the_bed_at_the_probe_offset_site(self):
+        # The bed is probed with the probe, not the nozzle, so the XY site
+        # must be shifted against the probe offsets: bed_site - offsets.
+        # With offsets (1, 2) and bed_xy_position 30,30 that is 29,28.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(calibration_values(), probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertIn(([29.0, 28.0, None], helper.speed),
+                      printer.toolhead.moves)
+        self.assertNotIn(([31.0, 32.0, None], helper.speed),
+                         printer.toolhead.moves)
+
+    def test_calibration_checks_probe_attachment_at_the_switch(self):
+        # The nozzle probes without the probe attached, so the trigger
+        # state is ignored there; the switch probe is the first point
+        # where a missing probe has to stop the run.
+        probe = FakeProbe(session=FakeProbeSession([]))
+        probe.mcu_probe.triggered = True
+        helper, printer = make_helper(calibration_values(), probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+        ]
+        with self.assertRaisesRegex(FakeError, 'probe switch not closed'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        # Only the nozzle sample ran; the switch was never probed.
+        self.assertEqual(len(printer.homing.calls), 1)
+        self.assertTrue(probe.session.ended)
+        self.assertEqual(printer.gcode_macro.executions[-1], 'end_gcode')
+
+    def test_calibration_approaches_the_nozzle_site_x_first(self):
+        # The nozzle approach moves X alone first: a diagonal move could
+        # drag the toolhead through the dock on the way to the endstop.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(calibration_values(), probe)
+        printer.toolhead.position = [3.0, 4.0, 10.0, 0.0]
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertEqual(printer.toolhead.moves[0],
+                         ([10.0, 4.0, None], 50.0))
+        self.assertEqual(printer.toolhead.moves[1],
+                         ([10.0, 10.0, None], 50.0))
+
+    def test_calibration_wiggles_after_the_nozzle_probe(self):
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(
+            calibration_values(wiggle_xy_offsets='0.5,-0.5'), probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        moves = printer.toolhead.moves
+        # One wiggle around the nozzle probe, none at the switch probe.
+        self.assertEqual(moves.count(([10.5, 9.5, None], 50.0)), 1)
+        self.assertEqual(moves.count(([20.5, 19.5, None], 50.0)), 0)
+
+    def test_failed_calibration_resets_last_query(self):
+        # Mainsail/Fluidd read last_query through get_status, so a failed
+        # run has to reset it even after an earlier success.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(calibration_values(), probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertTrue(helper.last_state)
+        printer.toolhead.homed_axes = 'xy'
+        with self.assertRaisesRegex(FakeError, 'must home axes first'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertEqual(helper.get_status(0.0),
+                         {'last_query': False, 'last_z_offset': 3.5})
+
+    def test_calibration_falls_back_when_the_session_cannot_probe(self):
+        # A modern probe can open a session whose object does not run
+        # probes itself; the bed is then probed through the legacy MCU
+        # endstop path while the session stays open around it.
+
+        class SessionWithoutRunProbe:
+
+            def __init__(self):
+                self.ended = False
+
+            def end_probe_session(self):
+                self.ended = True
+
+        session = SessionWithoutRunProbe()
+        probe = FakeProbe(session=session)
+        probe.mcu_probe = FakeMCUEndstop()
+        helper, printer = make_helper(calibration_values(), probe)
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+            [29.0, 28.0, 5.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+        self.assertTrue(session.ended)
+
     def test_calibration_uses_legacy_probe_endstop_path(self):
         probe = FakeLegacyProbe()
         probe.mcu_probe = FakeMCUEndstop()
-        values = {
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }
+        values = calibration_values()
         helper, printer = make_helper(values, probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
@@ -825,21 +1005,7 @@ class ZCalibrationTest(unittest.TestCase):
             mcu_endstop=raw_endstop)
         probe = FakeLegacyProbe()
         probe.mcu_probe = wrapper
-        values = {
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }
+        values = calibration_values()
         helper, printer = make_helper(values, probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
@@ -854,40 +1020,12 @@ class ZCalibrationTest(unittest.TestCase):
         probe = FakeLegacyProbe()
         probe.mcu_probe = None
         with self.assertRaisesRegex(FakeError, 'legacy_probe_mcu_endstop'):
-            make_helper({
-                'switch_offset': '0.5',
-                'offset_margins': '-10,10',
-                'samples': '1',
-                'samples_tolerance': '0.5',
-                'samples_tolerance_retries': '0',
-                'lift_speed': '10',
-                'safe_z_height': '5',
-                'probing_speed': '6',
-                'probing_second_speed': '2',
-                'probing_retract_dist': '1',
-                'nozzle_xy_position': '10,10',
-                'switch_xy_position': '20,20',
-                'bed_xy_position': '30,30',
-            }, probe)
+            make_helper(calibration_values(), probe)
 
     def test_calibration_requires_legacy_probe_mcu_endstop(self):
         probe = FakeLegacyProbe()
         probe.mcu_probe = FakeMCUEndstop()
-        helper, printer = make_helper({
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }, probe)
+        helper, printer = make_helper(calibration_values(), probe)
         # A probe endstop wrapper that only survives startup validation:
         # it exposes neither the MCU endstop surface nor a nested one, so
         # the legacy probing_move() fallback has nothing to probe with.
@@ -910,21 +1048,7 @@ class ZCalibrationTest(unittest.TestCase):
             [ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0)],
             end_exception=FakeError('probe session end failed'))
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        helper, printer = make_helper({
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }, probe)
+        helper, printer = make_helper(calibration_values(), probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
             [20.0, 20.0, 2.0],
@@ -945,21 +1069,8 @@ class ZCalibrationTest(unittest.TestCase):
             [ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0)],
             end_exception=FakeError('probe session end failed'))
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        helper, printer = make_helper({
-            'switch_offset': '0.5',
-            'offset_margins': '-10,10',
-            'samples': '2',
-            'samples_tolerance': '0.01',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }, probe)
+        helper, printer = make_helper(calibration_values(
+            samples='2', samples_tolerance='0.01'), probe)
         # The switch samples exceed the tolerance, so the calibration fails
         # inside the probe session and the session end fails on top of it.
         printer.homing.results = [
@@ -983,21 +1094,8 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
         ])
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        helper, printer = make_helper({
-            'switch_offset': '0.5',
-            'offset_margins': '-1,1',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-        }, probe)
+        helper, printer = make_helper(calibration_values(
+            offset_margins='-1,1'), probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
             [20.0, 20.0, 2.0],
@@ -1011,22 +1109,9 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
         ])
         probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
-        helper, printer = make_helper({
-            'switch_offset': '0.5',
-            'offset_margins': '-1,1',
-            'samples': '1',
-            'samples_tolerance': '0.5',
-            'samples_tolerance_retries': '0',
-            'lift_speed': '10',
-            'safe_z_height': '5',
-            'probing_speed': '6',
-            'probing_second_speed': '2',
-            'probing_retract_dist': '1',
-            'nozzle_xy_position': '10,10',
-            'switch_xy_position': '20,20',
-            'bed_xy_position': '30,30',
-            'offset_gcode': 'SET_GCODE_OFFSET Z_ADJUST={params.Z|float}',
-        }, probe)
+        helper, printer = make_helper(calibration_values(
+            offset_margins='-1,1',
+            offset_gcode='SET_GCODE_OFFSET Z_ADJUST={params.Z|float}'), probe)
         printer.homing.results = [
             [10.0, 10.0, 1.0],
             [20.0, 20.0, 2.0],
@@ -1153,8 +1238,7 @@ class ZCalibrationTest(unittest.TestCase):
         session = FakeProbeSession(
             [ProbeResult(0.0, 0.0, 0.0, 1.0, 2.0, 4.0)],
             toolhead=session_printer.toolhead)
-        session_printer.probe = FakeProbe(session=session)
-        session_printer.objects['probe'] = session_printer.probe
+        session_printer.objects['probe'] = FakeProbe(session=session)
         helper = make_connected_helper(session_printer,
                                        self.BED_RETRACT_VALUES)
         helper.handle_home_rails_end(None, [z_rail(session_printer)])
@@ -1189,8 +1273,7 @@ class ZCalibrationTest(unittest.TestCase):
             ProbeResult(0.0, 0.0, 0.0, 1.0, 2.0, 3.0),
             ProbeResult(0.0, 0.0, 0.0, 1.0, 2.0, 4.0),
         ], toolhead=printer.toolhead)
-        printer.probe = FakeProbe(session=session)
-        printer.objects['probe'] = printer.probe
+        printer.objects['probe'] = FakeProbe(session=session)
         helper = make_connected_helper(printer, {
             'probing_first_fast': 'true',
             'probing_speed': '10',

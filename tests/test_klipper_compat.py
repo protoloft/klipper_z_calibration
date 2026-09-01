@@ -178,6 +178,20 @@ class RuntimeContractValidatorTest(unittest.TestCase):
         printer.homing.probing_move = None
         self.assert_contract_fails(printer, probe, 'homing_probing_move')
 
+    def test_missing_toolhead_motion_status_fails_runtime_contract(self):
+        printer = FakePrinter()
+        probe = printer.objects['probe']
+        printer.toolhead.manual_move = None
+        self.assert_contract_fails(printer, probe,
+                                   'toolhead_motion_status')
+
+    def test_missing_gcode_offset_command_fails_runtime_contract(self):
+        printer = FakePrinter()
+        probe = printer.objects['probe']
+        printer.gcode_move.cmd_SET_GCODE_OFFSET = None
+        self.assert_contract_fails(printer, probe,
+                                   'gcode_offset_command')
+
     def test_missing_probe_defaults_fail_runtime_contract(self):
         probe = types.SimpleNamespace(
             start_probe_session=lambda gcmd: None,
