@@ -99,7 +99,16 @@ python3 scripts/check_whitespace.py
 ```
 
 It enforces UTF-8, no trailing whitespace, no tabs, 80 columns for Python
-source, and a single trailing newline. Run it rather than reasoning about it.
+source, blank lines before definitions, and a single trailing newline. Run it
+rather than reasoning about it.
+
+Every class or function definition is preceded by blank lines: two at module
+level, one inside a class or function. Comments directly above a definition
+belong to it and are counted as part of it. The one exception is a
+`cmd_<COMMAND>_help` attribute, which stays on the line directly above its
+command method the way Klipper writes it; the blank line goes before that pair.
+Unlike upstream Klipper source, this repository does not omit those blank
+lines - `z_calibration.py` and `klipper_compat.py` use the same layout.
 
 Target Python 3.9 (CI matrix: 3.9 and 3.13): no f-strings, no walrus operator,
 no `match` statements, no `X | Y` type unions. Klipper-style `%` formatting is

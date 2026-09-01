@@ -23,6 +23,7 @@ GENERIC_CARTESIAN_PATH = 'klippy/kinematics/generic_cartesian.py'
 
 def probe_profile(name):
     """Register a supported probe compatibility profile validator."""
+
     def register(func):
         """Store the decorated profile validator."""
         PROFILE_VALIDATORS.append((name, func))

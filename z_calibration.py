@@ -25,6 +25,7 @@ from klipper_compat import validate_runtime_contract
 SAFE_Z_HEIGHT_MIN = 3.
 SAFE_Z_HEIGHT_FALLBACK = 20.
 
+
 class ZCalibrationHelper:
     """Owns plugin configuration, startup state, and G-Code commands."""
 
@@ -102,6 +103,7 @@ class ZCalibrationHelper:
         self.gcode.register_command('CALCULATE_SWITCH_OFFSET',
                                     self.cmd_CALCULATE_SWITCH_OFFSET,
                                     desc=self.cmd_CALCULATE_SWITCH_OFFSET_help)
+
     # Configuration parsing helpers
     def _load_gcode_template(self, config, gcode_macro, name):
         """Load a G-Code template that defaults to an empty no-op."""
@@ -163,6 +165,7 @@ class ZCalibrationHelper:
         except (AttributeError, TypeError, ValueError):
             raise config.error("Unable to parse %s in %s"
                                % (name, self.name))
+
     # Klipper lifecycle and status
     def get_status(self, eventtime):
         """Expose last calibration state through Klipper's status API."""
@@ -225,6 +228,7 @@ class ZCalibrationHelper:
             if self.position_min is None:
                 self.position_min = settings['position_min']
             self.position_z_endstop = settings['position_endstop']
+
     # G-Code command handlers
     cmd_CALIBRATE_Z_help = ("Automatically calibrates the nozzle offset"
                             " to the print surface")
@@ -244,6 +248,7 @@ class ZCalibrationHelper:
         except Exception as err:
             self._run_error_gcode(err)
             raise
+
     cmd_PROBE_Z_ACCURACY_help = ("Probe Z-Endstop accuracy at"
                                  " Nozzle-Endstop position")
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
@@ -293,6 +298,7 @@ class ZCalibrationHelper:
             " range %.6f, average %.6f, median %.6f, standard deviation %.6f"
             % (gcmd.get_command(), max_value, min_value, range_value,
                avg_value, median, sigma))
+
     cmd_CALCULATE_SWITCH_OFFSET_help = ("Calculates a switch_offset based on"
                                         " the current z position")
     def cmd_CALCULATE_SWITCH_OFFSET(self, gcmd):
@@ -313,6 +319,7 @@ class ZCalibrationHelper:
                               " Either the nozzle is still too far away or"
                               " something else is wrong..."
                               % (gcmd.get_command()))
+
     # Command parameter and position resolution
     def _get_nozzle_site(self, gcmd):
         """Resolve the nozzle endstop XY position for this command."""
@@ -331,6 +338,7 @@ class ZCalibrationHelper:
                          " the nozzle_xy_position for %s, the [safe_z_home],"
                          " or use the NOZZLE_POSITION parameter."
                          % (gcmd.get_command(), self.name))
+
     def _get_switch_site(self, gcmd, nozzle_site):
         """Resolve the switch body XY position for this command."""
         switch_param = gcmd.get("SWITCH_POSITION", "")
@@ -349,6 +357,7 @@ class ZCalibrationHelper:
                          " the switch_xy_position or the switch_xy_offsets for"
                          " %s or use the SWITCH_POSITION parameter."
                          % (gcmd.get_command(), self.name))
+
     def _get_bed_site(self, gcmd):
         """Resolve the bed probing XY position for this command."""
         bed_param = gcmd.get("BED_POSITION", "")
@@ -368,6 +377,7 @@ class ZCalibrationHelper:
                          " zero_reference_position, or use the BED_POSITION"
                          " parameter."
                          % (gcmd.get_command(), self.name))
+
     def _get_switch_offset(self, gcmd):
         """Resolve switch_offset from G-Code parameter or config."""
         # from SWITCH_OFFSET parameter
@@ -380,6 +390,7 @@ class ZCalibrationHelper:
                          " the switch_offset for %s, or use the SWITCH_OFFSET"
                          " parameter."
                          % (gcmd.get_command(), self.name))
+
     def _run_error_gcode(self, err):
         """Run the configured error hook without masking the original error."""
         if self.error_gcode is None:
@@ -388,6 +399,7 @@ class ZCalibrationHelper:
             run_gcode_template(self.error_gcode, {'ERROR': err})
         except Exception:
             logging.exception("error_gcode failed")
+
     # Movement and probing primitives
     def _probe(self, gcmd, mcu_endstop, z_position, speed, wiggle=False,
                retract=True):
@@ -410,12 +422,14 @@ class ZCalibrationHelper:
                                 % (gcmd.get_command(), curpos[0],
                                    curpos[1], curpos[2]))
         return curpos
+
     def _require_z_homed(self, gcmd):
         """Reject commands until Z homing state is known and current."""
         if self.z_homing is None:
             raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
         if not self.toolhead_compat.is_axis_homed('z'):
             raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
+
     def _move(self, coord, speed):
         """Move through Klipper's toolhead wrapper."""
         self.toolhead_compat.manual_move(coord, speed)
@@ -425,12 +439,14 @@ class ZCalibrationHelper:
         if pos[2] < self.safe_z_height:
             # no safe z position, better to move up (absolute)
             self._move([None, None, self.safe_z_height], lift_speed)
+
     # Calculation and logging helpers
     def _calc_mean(self, positions):
         """Return the coordinate-wise mean of sampled positions."""
         count = float(len(positions))
         return [sum([pos[i] for pos in positions]) / count
                 for i in range(3)]
+
     def _calc_median(self, positions):
         """Return the median Z sample, averaging the middle pair if needed."""
         z_sorted = sorted(positions, key=(lambda p: p[2]))
@@ -440,6 +456,7 @@ class ZCalibrationHelper:
             return z_sorted[middle]
         # even number of samples
         return self._calc_mean(z_sorted[middle-1:middle+1])
+
     def _log_params(self, gcmd, switch_offset, nozzle_site, switch_site,
                     bed_site):
         """Write the effective calibration parameters to the Klipper log."""
@@ -460,6 +477,8 @@ class ZCalibrationHelper:
                         self.position_min, nozzle_site[0], nozzle_site[1],
                         switch_site[0], switch_site[1], bed_site[0],
                         bed_site[1]))
+
+
 class CalibrationRun:
     """Executes one CALIBRATE_Z command with resolved runtime state."""
 
@@ -479,6 +498,7 @@ class CalibrationRun:
         self.gcode_offset = GCodeOffsetCompat(self.gcode, gcode_move,
                                               helper.offset_gcode)
         self.offset_margins = helper.offset_margins
+
     def _probe_on_site(self, endstop, site, check_probe=False, split_xy=False,
                        wiggle=False):
         """Move to a site and sample the given endstop with retry handling."""
@@ -521,6 +541,7 @@ class CalibrationRun:
         if self.helper.samples_result == 'median':
             return self.helper._calc_median(positions)[2]
         return self.helper._calc_mean(positions)[2]
+
     def _probe_bed_on_site(self, site):
         """Probe the bed using the Klipper probe session path."""
         pos = self.toolhead_compat.get_position()
@@ -535,12 +556,14 @@ class CalibrationRun:
                                 % (self.gcmd.get_command(), curpos[0],
                                    curpos[1], curpos[2]))
         return curpos[2]
+
     def _check_probe_attached(self):
         """Verify the detachable probe switch is not already triggered."""
         time = self.toolhead_compat.get_last_move_time()
         if self.probe_compat.query_endstop(time):
             raise self.gcmd.error("%s: probe switch not closed - probe not"
                                   " attached?" % (self.gcmd.get_command()))
+
     def _add_probe_offset(self, site):
         """Convert a nozzle XY site to the matching probe XY site."""
         # calculate bed position by using the probe's offsets
@@ -549,6 +572,7 @@ class CalibrationRun:
         probe_site[0] -= probe_offsets[0]
         probe_site[1] -= probe_offsets[1]
         return probe_site
+
     def _set_new_gcode_offset(self, offset):
         """Apply the newly calculated Z offset through Klipper."""
         self.gcode_offset.set_new_offset(offset)
@@ -659,6 +683,8 @@ class CalibrationRun:
         finally:
             # execute end gcode
             self.helper.end_gcode.run_gcode_from_command()
+
+
 def load_config(config):
     """Klipper entrypoint used to instantiate the plugin."""
     return ZCalibrationHelper(config)

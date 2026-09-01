@@ -64,5 +64,112 @@ class IterFilesTest(unittest.TestCase):
         self.assertEqual(self.collect(build), ['README.md'])
 
 
+class BlankLineTest(unittest.TestCase):
+    """Covers the blank line rule for class and function definitions."""
+
+    def check(self, source):
+        """Return blank line errors reported for a Python source string."""
+        errors = []
+        check_whitespace.check_blank_lines(
+            pathlib.Path(check_whitespace.ROOT) / 'sample.py', source, errors)
+        return errors
+
+    def test_module_level_definitions_need_two_blank_lines(self):
+        source = 'def first():\n    pass\n\ndef second():\n    pass\n'
+        errors = self.check(source)
+        self.assertEqual(len(errors), 1)
+        self.assertIn('expected 2 blank line(s) before second, found 1',
+                      errors[0])
+
+    def test_methods_need_one_blank_line(self):
+        source = ('class Sample:\n'
+                  '    """Doc."""\n'
+                  '\n'
+                  '    def first(self):\n'
+                  '        pass\n'
+                  '    def second(self):\n'
+                  '        pass\n')
+        errors = self.check(source)
+        self.assertEqual(len(errors), 1)
+        self.assertIn('before second', errors[0])
+
+    def test_nested_definition_needs_one_blank_line(self):
+        source = ('def outer():\n'
+                  '    """Doc."""\n'
+                  '    def inner():\n'
+                  '        pass\n'
+                  '    return inner\n')
+        errors = self.check(source)
+        self.assertEqual(len(errors), 1)
+        self.assertIn('before inner', errors[0])
+
+    def test_first_statement_of_a_block_needs_no_blank_line(self):
+        source = ('class Sample:\n'
+                  '    def only(self):\n'
+                  '        pass\n')
+        self.assertEqual(self.check(source), [])
+
+    def test_help_attribute_stays_attached_to_its_command(self):
+        # Klipper keeps "cmd_X_help" on the line above its command, so the
+        # blank line belongs before the pair and not between its halves.
+        source = ('class Sample:\n'
+                  '    def first(self):\n'
+                  '        pass\n'
+                  '\n'
+                  '    cmd_SAMPLE_help = "Sample"\n'
+                  '    def cmd_SAMPLE(self, gcmd):\n'
+                  '        pass\n')
+        self.assertEqual(self.check(source), [])
+
+    def test_help_attribute_does_not_hide_a_missing_blank_line(self):
+        source = ('class Sample:\n'
+                  '    def first(self):\n'
+                  '        pass\n'
+                  '    cmd_SAMPLE_help = "Sample"\n'
+                  '    def cmd_SAMPLE(self, gcmd):\n'
+                  '        pass\n')
+        errors = self.check(source)
+        self.assertEqual(len(errors), 1)
+        self.assertIn('before cmd_SAMPLE', errors[0])
+
+    def test_comments_above_a_definition_belong_to_it(self):
+        source = ('class Sample:\n'
+                  '    def first(self):\n'
+                  '        pass\n'
+                  '\n'
+                  '    # Explains the method below.\n'
+                  '    def second(self):\n'
+                  '        pass\n')
+        self.assertEqual(self.check(source), [])
+
+    def test_decorated_definitions_are_measured_at_the_decorator(self):
+        source = ('class Sample:\n'
+                  '    def first(self):\n'
+                  '        pass\n'
+                  '    @property\n'
+                  '    def second(self):\n'
+                  '        pass\n')
+        errors = self.check(source)
+        self.assertEqual(len(errors), 1)
+        self.assertIn('before second', errors[0])
+
+    def test_definitions_inside_string_literals_are_not_reported(self):
+        # tests/test_klipper_contract.py embeds Klipper sources as strings; a
+        # text search would report every "def" line inside them.
+        source = ('SOURCE = """\n'
+                  'class Fake:\n'
+                  '    def first(self):\n'
+                  '        pass\n'
+                  '    def second(self):\n'
+                  '        pass\n'
+                  '"""\n')
+        self.assertEqual(self.check(source), [])
+
+    def test_unparsable_source_is_reported(self):
+        errors = self.check('def broken(:\n')
+        self.assertEqual(len(errors), 1)
+        self.assertIn('cannot parse', errors[0])
+
+
 if __name__ == '__main__':
     unittest.main()

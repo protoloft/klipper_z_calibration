@@ -4,6 +4,7 @@
 # Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+import ast
 import pathlib
 import sys
 
@@ -35,6 +36,15 @@ SKIP_SUFFIXES = {
     '.pdf',
     '.png',
 }
+# Blank lines before a definition: two at module level, one inside a class or
+# function. This is the layout klipper_compat.py already uses everywhere.
+BLANK_LINES_MODULE = 2
+BLANK_LINES_NESTED = 1
+DEFINITION_NODES = (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)
+# A "cmd_X_help" attribute documents the command right below it. Klipper keeps
+# that pair on adjacent lines, so the blank line is required before the pair
+# and not between its two halves.
+HELP_SUFFIX = '_help'
 
 
 def iter_files():
@@ -66,6 +76,86 @@ def report(errors, path, lineno, msg):
         errors.append("%s:%d: %s" % (relpath, lineno, msg))
 
 
+def iter_definitions(tree):
+    """Yield definitions as (node, siblings, index, at_module_level).
+
+    Only class and function bodies are descended into, which is where the
+    definitions this rule is about live.
+    """
+    pending = [(tree, True)]
+    while pending:
+        node, at_module_level = pending.pop()
+        for index, statement in enumerate(node.body):
+            if not isinstance(statement, DEFINITION_NODES):
+                continue
+            yield statement, node.body, index, at_module_level
+            pending.append((statement, False))
+
+
+def definition_start(node):
+    """Return the first line of a definition, decorators included."""
+    if node.decorator_list:
+        return node.decorator_list[0].lineno
+    return node.lineno
+
+
+def paired_help_assignment(siblings, index, start):
+    """Return a "cmd_X_help" assignment that belongs to the definition."""
+    if index == 0:
+        return None
+    previous = siblings[index - 1]
+    if not isinstance(previous, ast.Assign):
+        return None
+    if previous.end_lineno != start - 1:
+        return None
+    names = [target.id for target in previous.targets
+             if isinstance(target, ast.Name)]
+    if len(names) != 1 or not names[0].endswith(HELP_SUFFIX):
+        return None
+    return previous
+
+
+def leading_blank_lines(lines, start):
+    """Count blank lines above a block, skipping the comments attached to it."""
+    index = start - 2
+    while index >= 0 and lines[index].strip().startswith('#'):
+        index -= 1
+    count = 0
+    while index >= 0 and not lines[index].strip():
+        count += 1
+        index -= 1
+    return count
+
+
+def check_blank_lines(path, text, errors):
+    """Check that every definition is preceded by blank lines.
+
+    The source is parsed instead of scanned line by line: the tests embed
+    Klipper sources as string literals, and a text search would report the
+    "def" lines inside them.
+    """
+    try:
+        tree = ast.parse(text)
+    except SyntaxError as err:
+        report(errors, path, err.lineno, "cannot parse: %s" % (err.msg,))
+        return
+    lines = text.splitlines()
+    for node, siblings, index, at_module_level in iter_definitions(tree):
+        if index == 0:
+            # The first statement of a block opens it and needs no separator.
+            continue
+        start = definition_start(node)
+        paired = paired_help_assignment(siblings, index, start)
+        if paired is not None:
+            start = paired.lineno
+        expected = BLANK_LINES_MODULE if at_module_level else BLANK_LINES_NESTED
+        found = leading_blank_lines(lines, start)
+        if found < expected:
+            report(errors, path, node.lineno,
+                   "expected %d blank line(s) before %s, found %d"
+                   % (expected, node.name, found))
+
+
 def check_file(path, errors):
     """Check one file for encoding and whitespace violations."""
     data = path.read_bytes()
@@ -89,6 +179,8 @@ def check_file(path, errors):
             if ord(char) < 32 and char != '\t':
                 msg = "invalid control character at column %d" % (column,)
                 report(errors, path, lineno, msg)
+    if path.suffix == '.py':
+        check_blank_lines(path, text, errors)
 
 
 def main():
