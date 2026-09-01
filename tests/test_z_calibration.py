@@ -1092,6 +1092,24 @@ class ZCalibrationTest(unittest.TestCase):
         adapter = klipper_compat.ProbeCompat(helper, probe, FakeGcmd())
         self.assertIs(adapter.get_legacy_probe_endstop(), raw_endstop)
 
+    def test_legacy_probe_endstop_matches_what_startup_validated(self):
+        # A wrapper that has get_steppers() but is still not a probing
+        # target. The startup contract resolves past it to the nested MCU
+        # endstop, so the probing move has to use that same object; picking
+        # the wrapper here would fail later at home_start().
+        raw_endstop = FakeMCUEndstop()
+        wrapper = types.SimpleNamespace(
+            get_steppers=lambda: [],
+            query_endstop=lambda print_time: False,
+            mcu_endstop=raw_endstop)
+        probe = FakeProbe()
+        probe.mcu_probe = wrapper
+        helper, _printer = make_helper(probe=probe)
+        adapter = klipper_compat.ProbeCompat(helper, probe, FakeGcmd())
+        self.assertIs(adapter.get_legacy_probe_endstop(), raw_endstop)
+        self.assertIs(
+            klipper_compat._resolve_legacy_probe_endstop(probe), raw_endstop)
+
     def test_probe_compat_uses_legacy_multi_probe_fallback(self):
         helper, _printer = make_helper()
         probe = FakeLegacyProbe()

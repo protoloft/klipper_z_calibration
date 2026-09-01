@@ -614,12 +614,9 @@ class ProbeCompat:
 
     def get_legacy_probe_endstop(self):
         """Return the MCU endstop used by the legacy fallback path."""
-        probe_endstop = getattr(self.probe, 'mcu_probe', None)
-        if probe_endstop is None:
-            return None
-        if hasattr(probe_endstop, 'get_steppers'):
-            return probe_endstop
-        return getattr(probe_endstop, 'mcu_endstop', None)
+        # The same resolution the startup contract validates, so the object
+        # checked then is the object passed to homing.probing_move() now.
+        return _resolve_legacy_probe_endstop(self.probe)
 
     def run_probe(self, speed, samples=None):
         """Run a probe sample through a modern probe session."""
