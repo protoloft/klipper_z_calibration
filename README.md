@@ -106,7 +106,7 @@ The installer manages the `[update_manager z_calibration]` section in
 - New installations use `channel: stable`.
 - Existing sections without a `channel` are migrated to `channel: stable`
   when the installer is rerun.
-- Existing explicit `stable`, `beta`, or `dev` channels are left unchanged.
+- Any existing explicit `channel` value is left unchanged.
 - `managed_services: klipper` is configured so updates restart Klipper.
 
 Moonraker updates do not run `install.sh`. Existing installs with no

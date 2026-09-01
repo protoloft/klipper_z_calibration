@@ -350,17 +350,28 @@ Use this structure for GitHub Release notes:
 
 ## Maintainer Command Reference
 
-Run all validation:
+Run all validation (the single entry point; it runs whitespace, shell
+syntax, the pinned `ruff` lint step, compile checks, the unit tests, and
+`git diff --check`):
+
+```bash
+python3 scripts/check_all.py
+```
+
+The individual steps, for running one in isolation. The lint step is the
+one CI enforces with `ruff==0.16.4`; without it installed, check_all.py
+skips lint with a notice:
 
 ```bash
 python3 scripts/check_whitespace.py
 bash -n install.sh
+python3 -m ruff check .
+python3 -m compileall z_calibration.py klipper_compat.py scripts tests
+python3 -m unittest discover -s tests -v
+git diff --check
 python3 scripts/check_release.py --tag v1.2.3 --channel stable
 python3 scripts/check_release.py --tag v1.2.3-beta.1 --channel beta
 python3 scripts/check_klipper_contract.py --klipper-path ~/klipper
-python3 -m compileall .
-python3 -m unittest discover -s tests -v
-git diff --check
 ```
 
 List recent tags:
