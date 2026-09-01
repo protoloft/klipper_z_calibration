@@ -10,6 +10,7 @@ KLIPPER_PATH="${HOME}/klipper"
 MOONRAKER_CONFIG="${HOME}/printer_data/config/moonraker.conf"
 MOONRAKER_FALLBACK="${HOME}/klipper_config/moonraker.conf"
 MOONRAKER_CONFIG_CUSTOM=0
+MOONRAKER_AVAILABLE=1
 NUM_INSTALLS=0
 NUM_INSTALLS_CUSTOM=0
 
@@ -100,25 +101,29 @@ check_klipper()
     fi
 }
 
+# Moonraker is optional: it manages updates, it does not run the plugin.
+# A missing configuration at the default locations only skips the update
+# manager step. A path given with -m is an explicit request and must exist,
+# otherwise the caller would silently not get what was asked for.
 resolve_moonraker_config()
 {
     if [ -f "$MOONRAKER_CONFIG" ]; then
         echo "Moonraker configuration found at ${MOONRAKER_CONFIG}"
-        return
+        return 0
     fi
-    if [ "$MOONRAKER_CONFIG_CUSTOM" -eq 0 ] \
-       && [ -f "$MOONRAKER_FALLBACK" ]; then
+    if [ "$MOONRAKER_CONFIG_CUSTOM" -eq 1 ]; then
+        echo "Error: Moonraker configuration not found: ${MOONRAKER_CONFIG}. Exiting.."
+        exit 1
+    fi
+    if [ -f "$MOONRAKER_FALLBACK" ]; then
         echo "${MOONRAKER_CONFIG} does not exist. Falling back to ${MOONRAKER_FALLBACK}"
         MOONRAKER_CONFIG="$MOONRAKER_FALLBACK"
         echo "Moonraker configuration found at ${MOONRAKER_CONFIG}"
-        return
+        return 0
     fi
-    if [ "$MOONRAKER_CONFIG_CUSTOM" -eq 0 ]; then
-        echo "Error: Moonraker configuration not found: ${MOONRAKER_CONFIG} or ${MOONRAKER_FALLBACK}. Exiting.."
-    else
-        echo "Error: Moonraker configuration not found: ${MOONRAKER_CONFIG}. Exiting.."
-    fi
-    exit 1
+    echo "No Moonraker configuration found at ${MOONRAKER_CONFIG} or ${MOONRAKER_FALLBACK}."
+    echo "Skipping the update manager. Use -m <path> if Moonraker is installed elsewhere."
+    return 1
 }
 
 # Step 3: Check folders
@@ -134,7 +139,13 @@ check_klipper_path()
 check_requirements()
 {
     check_klipper_path
-    resolve_moonraker_config
+    # Declared separately from the "if": under "set -e" a failing call in a
+    # condition is fine, but a bare call would end the script.
+    if resolve_moonraker_config; then
+        MOONRAKER_AVAILABLE=1
+    else
+        MOONRAKER_AVAILABLE=0
+    fi
 }
 
 # Step 4: Link extension to Klipper
@@ -250,6 +261,7 @@ main()
     OPTIND=1
     UNINSTALL=""
     MOONRAKER_CONFIG_CUSTOM=0
+    MOONRAKER_AVAILABLE=1
     NUM_INSTALLS_CUSTOM=0
     local OPTION
     while getopts ":k:m:n:uh" OPTION; do
@@ -270,7 +282,9 @@ main()
     if [ -z "$UNINSTALL" ]; then
         check_requirements
         link_extension
-        add_updater
+        if [ "$MOONRAKER_AVAILABLE" -eq 1 ]; then
+            add_updater
+        fi
     else
         check_klipper_path
         uinstall

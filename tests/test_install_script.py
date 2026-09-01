@@ -125,7 +125,9 @@ class InstallScriptTest(unittest.TestCase):
                 self.assertIn("-n must be a positive integer", result.stdout)
                 self.assertNotIn("bad_service_check", result.stdout)
 
-    def test_missing_moonraker_config_exits_with_code_one(self):
+    def test_explicit_moonraker_config_must_exist(self):
+        # A path given with -m is an explicit request. Silently skipping the
+        # update manager would not be what the caller asked for.
         with tempfile.TemporaryDirectory() as tempdir:
             missing = pathlib.Path(tempdir) / 'moonraker.conf'
             result = run_bash(
@@ -134,6 +136,61 @@ class InstallScriptTest(unittest.TestCase):
                 "resolve_moonraker_config\n" % (q(missing),))
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertIn("Moonraker configuration not found", result.stdout)
+
+    def test_default_moonraker_config_is_optional(self):
+        # Moonraker manages updates, it does not run the plugin. Without it
+        # the update manager step is skipped, not the installation.
+        with tempfile.TemporaryDirectory() as tempdir:
+            missing = pathlib.Path(tempdir) / 'moonraker.conf'
+            fallback = pathlib.Path(tempdir) / 'old' / 'moonraker.conf'
+            result = run_bash(
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_FALLBACK=%s\n"
+                "MOONRAKER_CONFIG_CUSTOM=0\n"
+                # "set -e" would end the snippet on the non-zero status, so
+                # the status is captured the way check_requirements does.
+                "if resolve_moonraker_config; then rc=0; else rc=1; fi\n"
+                "printf 'rc=%%s\\n' \"$rc\"\n"
+                % (q(missing), q(fallback)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("rc=1", result.stdout)
+            self.assertIn("Skipping the update manager", result.stdout)
+
+    def test_install_links_the_plugin_without_moonraker(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            missing = pathlib.Path(tempdir) / 'moonraker.conf'
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_FALLBACK=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "add_updater(){ echo ran_add_updater; }\n"
+                "restart_klipper(){ echo restart; }\n"
+                "main\n" % (q(klipper), q(missing), q(missing)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("ran_add_updater", result.stdout)
+            self.assertIn("restart", result.stdout)
+            link = klipper / 'klippy' / 'extras' / 'z_calibration.py'
+            self.assertEqual(os.readlink(str(link)),
+                             str(ROOT / 'z_calibration.py'))
+
+    def test_install_adds_the_updater_when_moonraker_is_present(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            config = pathlib.Path(tempdir) / 'moonraker.conf'
+            config.write_text("[server]\n", encoding='utf-8')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "MOONRAKER_CONFIG=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "add_updater(){ echo ran_add_updater; }\n"
+                "restart_klipper(){ echo restart; }\n"
+                "main\n" % (q(klipper), q(config)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("ran_add_updater", result.stdout)
 
     def test_error_paths_do_not_use_negative_exit_codes(self):
         text = INSTALL_SH.read_text(encoding='utf-8')

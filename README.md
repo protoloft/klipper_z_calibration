@@ -118,6 +118,11 @@ Moonraker's modern default config path is
 `~/printer_data/config/moonraker.conf`. Use `install.sh -m <path>` for custom
 layouts.
 
+Moonraker is not required. If neither the default path nor the older
+`~/klipper_config/moonraker.conf` exists, the installer reports it, skips the
+update manager section, and installs the plugin anyway. A path given with
+`-m` must exist.
+
 ## Configuration Notes
 
 Use the Wiki for the full configuration reference:
