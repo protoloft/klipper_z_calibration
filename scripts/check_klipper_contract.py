@@ -263,6 +263,28 @@ def validate_stepper(root, errors):
     require('register_endstop(mcu_endstop' in source,
             'query_endstops registration of the rail endstop not found',
             errors)
+    # A plugin-owned endstop has to attach the Z steppers itself. Klipper
+    # selects them the same way in probe.LookupZSteppers; an endstop
+    # without steppers cannot stop a probing move.
+    require(class_has_function(tree, 'MCU_stepper', 'is_active_axis'),
+            'stepper is_active_axis not found', errors)
+
+
+def validate_pins(root, errors):
+    """Validate source markers for the plugin-owned calibration endstop."""
+    # An optional 'endstop_pin' makes the plugin set up its own MCU endstop
+    # on a plain pin, the way tools_calibrate does. Sharing that pin with
+    # another consumer requires allow_multi_use_pin(), because lookup_pin()
+    # rejects an already active pin otherwise.
+    _source, tree = read_source(root, 'klippy/pins.py')
+    require(class_has_function(tree, 'PrinterPins', 'setup_pin'),
+            'pins setup_pin not found', errors)
+    require(class_has_function(tree, 'PrinterPins', 'allow_multi_use_pin'),
+            'pins allow_multi_use_pin not found', errors)
+    # The own endstop is registered so that QUERY_ENDSTOPS keeps showing it.
+    _qsource, qtree = read_source(root, 'klippy/extras/query_endstops.py')
+    require(class_has_function(qtree, 'QueryEndstops', 'register_endstop'),
+            'query_endstops register_endstop not found', errors)
 
 
 def validate_generic_cartesian(root, errors):
@@ -317,6 +339,7 @@ def validate_baseline(root):
         validate_mcu(root, errors)
         validate_gcode_macro(root, errors)
         validate_stepper(root, errors)
+        validate_pins(root, errors)
         validate_generic_cartesian(root, errors)
     except ContractError as err:
         errors.append(str(err))

@@ -114,6 +114,7 @@ class RuntimeContractValidator:
         """Run all startup runtime compatibility checks."""
         self._validate_homing_probing_move()
         self._validate_z_endstop_probe_target()
+        self._validate_z_endstop_steppers()
         self._validate_toolhead_motion_status()
         if self.offset_gcode is None:
             self._validate_gcode_offset_command()
@@ -142,6 +143,20 @@ class RuntimeContractValidator:
         # satisfy the downstream probing target contract at startup.
         self._require_probing_endstop(self.z_endstop,
                                       'z_endstop_probe_target')
+
+    def _validate_z_endstop_steppers(self):
+        """Ensure the calibration endstop can actually stop a move."""
+        if self.z_endstop is None:
+            return
+        # Current Klipper drops an endstop without steppers from the homing
+        # move, so the probing move runs to position_min without a trigger
+        # and the nozzle is driven into the bed. Klipper v0.13.0 and Kalico
+        # do not filter and raise from max() over the empty stepper list
+        # instead. Neither outcome is acceptable, so refuse at startup.
+        if not self.z_endstop.get_steppers():
+            self._fail('z_endstop_steppers',
+                       'no z steppers are attached to the calibration'
+                       ' endstop')
 
     def _validate_toolhead_motion_status(self):
         """Ensure toolhead movement and status methods are available."""
@@ -296,6 +311,41 @@ class EndstopWrapper:
     def query_endstop(self, print_time):
         """Forward query_endstop() to the wrapped MCU endstop."""
         return self.mcu_endstop.query_endstop(print_time)
+
+
+class PinEndstop(EndstopWrapper):
+    """Owns an MCU endstop on a plain pin and attaches the Z steppers."""
+
+    # Klipper has no config section that just declares a switch. Everything
+    # that can stop a move is an MCU endstop created through
+    # pins.setup_pin('endstop', ...), and only rails, the probe and
+    # sensorless homing create one. A calibration switch that is nobody's
+    # endstop therefore has to be set up here.
+    def __init__(self, printer, pin):
+        ppins = printer.lookup_object('pins')
+        # Several endstop objects on one physical pin are an established
+        # pattern, not a workaround: tools_calibrate builds three of them
+        # from the same pin. allow_multi_use_pin() parses without invert or
+        # pullup support, so it needs the bare pin name.
+        ppins.allow_multi_use_pin(pin.replace('^', '').replace('!', ''))
+        EndstopWrapper.__init__(self, ppins.setup_pin('endstop', pin))
+        self.printer = printer
+        # Attaching the steppers is not optional. Without them Klipper drops
+        # this endstop from the homing move and the probing move runs to
+        # position_min with no trigger, which drives the nozzle into the
+        # bed. RuntimeContractValidator refuses to start if none attached.
+        printer.register_event_handler('klippy:mcu_identify',
+                                       self._handle_mcu_identify)
+
+    def _handle_mcu_identify(self):
+        """Attach every kinematic Z stepper once the MCUs are known."""
+        # This is what Klipper does for its own probe endstop in
+        # probe.LookupZSteppers, reproduced here so that no probe internals
+        # have to be imported.
+        kinematics = self.printer.lookup_object('toolhead').get_kinematics()
+        for stepper in kinematics.get_steppers():
+            if stepper.is_active_axis('z'):
+                self.add_stepper(stepper)
 
 
 class HomingCompat:

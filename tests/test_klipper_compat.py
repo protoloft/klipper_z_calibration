@@ -278,7 +278,9 @@ class EndstopWrapperTest(unittest.TestCase):
                          [('add_stepper', (stepper,), {})])
 
     def test_get_steppers_is_forwarded(self):
-        self.assertIs(self.wrapper.get_steppers(), self.endstop.steppers)
+        # Klipper's MCU_endstop.get_steppers() returns a new list, so the
+        # contents are the forwarded value, not the list object.
+        self.assertEqual(self.wrapper.get_steppers(), self.endstop.steppers)
         self.assertEqual(self.endstop.calls, [('get_steppers', (), {})])
 
     def test_home_start_forwards_args_and_kwargs(self):
@@ -308,7 +310,7 @@ class EndstopWrapperTest(unittest.TestCase):
         compat = klipper_compat.HomingCompat(printer)
         z_endstop = compat.get_z_endstop(printer.query_endstops,
                                          'z_calibration')
-        self.assertIs(z_endstop.get_steppers(), endstop.steppers)
+        self.assertEqual(z_endstop.get_steppers(), endstop.steppers)
 
 
 class HomingCompatZEndstopTest(unittest.TestCase):

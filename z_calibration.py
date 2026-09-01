@@ -15,8 +15,9 @@ if MODULE_PATH not in sys.path:
     sys.path.insert(0, MODULE_PATH)
 
 from klipper_compat import BedMeshCompat, GCodeOffsetCompat, HomingCompat
-from klipper_compat import PrinterObjectCompat, ProbeCompat, ToolheadCompat
-from klipper_compat import run_gcode_template, validate_runtime_contract
+from klipper_compat import PinEndstop, PrinterObjectCompat, ProbeCompat
+from klipper_compat import ToolheadCompat, run_gcode_template
+from klipper_compat import validate_runtime_contract
 
 # A safe Z height below this is not enough clearance for the docking moves,
 # so it is replaced by the fallback below. Both the warning and the
@@ -61,6 +62,7 @@ class ZCalibrationHelper:
                                             None, above=0.)
         self.position_min = config.getfloat('position_min', None)
         self.first_fast = config.getboolean('probing_first_fast', False)
+        self.endstop_pin = config.get('endstop_pin', None)
         self.nozzle_site = self._get_xy(config, "nozzle_xy_position", True)
         self.switch_site = self._get_xy(config, "switch_xy_position", True)
         self.switch_xy_offsets = self._get_xy(
@@ -79,6 +81,14 @@ class ZCalibrationHelper:
         self.error_gcode = self._load_optional_gcode_template(
             config, gcode_macro, 'error_gcode')
         self.query_endstops = self.objects_compat.load_query_endstops(config)
+        if self.endstop_pin is not None:
+            # Own the calibration endstop instead of borrowing the one the
+            # Z rail registered. Register it under the section name, never
+            # under a Z rail name, so the homing endstop lookup cannot pick
+            # it up as the endstop that homes Z.
+            self.z_endstop = PinEndstop(self.printer, self.endstop_pin)
+            self.query_endstops.register_endstop(self.z_endstop.mcu_endstop,
+                                                 self.name)
         self.printer.register_event_handler("klippy:connect",
                                             self.handle_connect)
         self.printer.register_event_handler("homing:home_rails_end",
@@ -161,8 +171,11 @@ class ZCalibrationHelper:
 
     def handle_connect(self):
         """Resolve required printer objects once Klipper is connected."""
-        self.z_endstop = self.homing_compat.get_z_endstop(
-            self.query_endstops, self.name)
+        if self.z_endstop is None:
+            self.z_endstop = self.homing_compat.get_z_endstop(
+                self.query_endstops, self.name)
+        # The rail that homes Z is still needed for the homing settings,
+        # even when its endstop is the probe's virtual one.
         self.z_homing_endstop = self.homing_compat.find_z_homing_endstop(
             self.query_endstops, self.name)
         # get probing settings
@@ -540,6 +553,25 @@ class CalibrationRun:
         """Apply the newly calculated Z offset through Klipper."""
         self.gcode_offset.set_new_offset(offset)
 
+    def _suggest_endstop_position(self, offset):
+        """Suggest the knob that defines the Z homing reference."""
+        # position_z_endstop is the position_endstop of the rail that homes
+        # Z. With a virtual endstop Klipper takes that value from the probe
+        # (rail.position_endstop = mcu_endstop.get_position_endstop()), so
+        # the number stays correct but the knob to change is the probe
+        # z_offset, not a z axis position_endstop that does not exist.
+        pos_z_estop = self.helper.position_z_endstop
+        new_pos_z_estop = pos_z_estop - offset
+        if self.helper.endstop_pin is not None:
+            knob = 'probe z_offset'
+        else:
+            knob = 'z axis position_endstop'
+        self.gcmd.respond_info("%s: current %s=%.3f - new offset=%.6f -->"
+                               " POSSIBLE SUGGESTION: new %s=%.3f"
+                               % (self.gcmd.get_command(), knob,
+                                  pos_z_estop, offset, knob,
+                                  new_pos_z_estop))
+
     def calibrate_z(self, switch_offset, nozzle_site, switch_site, bed_site):
         """Run the complete calibration sequence and store the result."""
         # execute start gcode
@@ -593,15 +625,7 @@ class CalibrationRun:
                                       switch_zero, nozzle_zero, switch_offset,
                                       offset))
             if abs(offset) > 0.2:
-                pos_z_estop = self.helper.position_z_endstop
-                new_pos_z_estop = pos_z_estop - offset
-                self.gcmd.respond_info("%s: current z axis position_endstop="
-                                       "%.3f - new offset=%.6f --> POSSIBLE"
-                                       " SUGGESTION: new z axis"
-                                       " position_endstop=%.3f"
-                                       % (self.gcmd.get_command(),
-                                          pos_z_estop, offset,
-                                          new_pos_z_estop))
+                self._suggest_endstop_position(offset)
             # check offset margins
             if (offset < self.offset_margins[0]
                 or offset > self.offset_margins[1]):

@@ -13,16 +13,26 @@ class FakeError(Exception):
 
 
 class FakeMCUEndstop:
-    """Minimal MCU endstop surface used by probing_move tests."""
+    """Minimal MCU endstop surface used by probing_move tests.
+
+    A rail attaches its steppers while the config is read, so a real
+    endstop that reaches the plugin always reports at least one. An empty
+    list is the misconfiguration that RuntimeContractValidator rejects, so
+    it belongs to FakeStepperlessMCUEndstop and not to the default shape.
+    """
+
+    def __init__(self, steppers=None):
+        self.steppers = list(steppers if steppers is not None
+                             else [FakeStepper()])
 
     def get_mcu(self):
         return None
 
     def add_stepper(self, stepper):
-        pass
+        self.steppers.append(stepper)
 
     def get_steppers(self):
-        return []
+        return list(self.steppers)
 
     def home_start(self, *args, **kwargs):
         pass
@@ -34,13 +44,20 @@ class FakeMCUEndstop:
         return False
 
 
+class FakeStepperlessMCUEndstop(FakeMCUEndstop):
+    """Endstop that never had a stepper attached to it."""
+
+    def __init__(self):
+        FakeMCUEndstop.__init__(self, [])
+
+
 class FakeRecordingMCUEndstop(FakeMCUEndstop):
     """MCU endstop that records forwarded calls and returns markers."""
 
-    def __init__(self):
+    def __init__(self, steppers=None):
+        FakeMCUEndstop.__init__(self, steppers)
         self.calls = []
         self.mcu = object()
-        self.steppers = [object()]
         self.add_stepper_result = object()
         self.home_start_result = object()
         self.home_wait_result = object()
@@ -52,11 +69,12 @@ class FakeRecordingMCUEndstop(FakeMCUEndstop):
 
     def add_stepper(self, stepper):
         self.calls.append(('add_stepper', (stepper,), {}))
+        self.steppers.append(stepper)
         return self.add_stepper_result
 
     def get_steppers(self):
         self.calls.append(('get_steppers', (), {}))
-        return self.steppers
+        return list(self.steppers)
 
     def home_start(self, *args, **kwargs):
         self.calls.append(('home_start', args, dict(kwargs)))
@@ -297,6 +315,9 @@ class FakeQueryEndstops:
     def __init__(self):
         self.endstops = [(FakeMCUEndstop(), 'stepper_z')]
 
+    def register_endstop(self, mcu_endstop, name):
+        self.endstops.append((mcu_endstop, name))
+
 
 class FakeProbeEndstop:
     """Probe endstop that returns a configurable trigger state."""
@@ -453,6 +474,30 @@ class FakeProbeWithProbeSession:
         self.probe_session = FakeProbeSession([])
 
 
+class FakePins:
+    """Klipper's pins module, reduced to endstop setup."""
+
+    def __init__(self):
+        self.allowed_multi_use = []
+        self.setup_calls = []
+        self.active_pins = {}
+
+    def allow_multi_use_pin(self, pin_desc):
+        self.allowed_multi_use.append(pin_desc)
+
+    def setup_pin(self, pin_type, pin_desc):
+        # Klipper rejects a second consumer of a pin unless the bare name
+        # was allowed for multi use first. Reproduce that, because it is
+        # the reason allow_multi_use_pin() has to be called.
+        bare = pin_desc.replace('^', '').replace('!', '')
+        if bare in self.active_pins and bare not in self.allowed_multi_use:
+            raise FakeError("pin %s used multiple times in config" % (bare,))
+        self.active_pins[bare] = pin_desc
+        self.setup_calls.append((pin_type, pin_desc))
+        endstop = FakeRecordingMCUEndstop(steppers=[])
+        return endstop
+
+
 class FakePrinter:
     """Printer object registry and error factory used by unit tests."""
 
@@ -475,6 +520,10 @@ class FakePrinter:
             'query_endstops': self.query_endstops,
             'probe': probe or FakeProbe(),
         }
+        self.pins = FakePins()
+        self.objects['pins'] = self.pins
+        # Klipper allows several handlers per event, and both the plugin
+        # and a plugin-owned endstop register their own.
         self.handlers = {}
 
     def load_object(self, config, name):
@@ -488,7 +537,12 @@ class FakePrinter:
         raise KeyError(name)
 
     def register_event_handler(self, name, handler):
-        self.handlers[name] = handler
+        self.handlers.setdefault(name, []).append(handler)
+
+    def run_event_handlers(self, name, *args):
+        """Fire every handler registered for an event, in order."""
+        for handler in self.handlers.get(name, []):
+            handler(*args)
 
     def config_error(self, message):
         return FakeError(message)
@@ -593,12 +647,20 @@ class FakeCarriage:
 class FakeKinematics:
     """Classic kinematics exposing rails instead of carriages."""
 
-    def __init__(self, rails=None):
+    def __init__(self, rails=None, steppers=None):
         self.rails = list(rails or [])
+        # A plugin-owned endstop asks the kinematics for its steppers and
+        # attaches every one that is active on Z.
+        self.steppers = list(steppers if steppers is not None
+                             else [FakeStepper()])
+
+    def get_steppers(self):
+        return list(self.steppers)
 
 
-class FakeGenericCartesianKinematics:
+class FakeGenericCartesianKinematics(FakeKinematics):
     """Kinematics that resolves axes through primary carriages."""
 
-    def __init__(self, carriages=None):
+    def __init__(self, carriages=None, steppers=None):
+        FakeKinematics.__init__(self, steppers=steppers)
         self.primary_carriages = list(carriages or [])

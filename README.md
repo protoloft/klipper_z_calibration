@@ -56,6 +56,8 @@ Supported:
 - Kalico installations using the external plugin mechanism in `klippy/plugins`
 - Classic kinematics with a `[stepper_z]` endstop and Klipper's
   `generic_cartesian` kinematics with a Z carriage endstop
+- Z homing through `probe:z_virtual_endstop`, with the calibration switch
+  configured as `endstop_pin` in `[z_calibration]`
 - Dockable contact probes such as Klicky-style probes
 - Moonraker Update Manager installs
 
@@ -137,6 +139,12 @@ The older `max_deviation` and `clearance` options are no longer supported.
 the calculated Z adjustment through custom G-Code.
 
 `error_gcode` is an optional hook for reacting to `CALIBRATE_Z` failures.
+
+`endstop_pin` is an optional pin of a Z switch that is not the endstop of any
+stepper. It is only needed when the probe homes Z through
+`probe:z_virtual_endstop`; without it the plugin keeps using the endstop the Z
+rail registered. When another section already claims the same pin, Klipper
+keeps the polarity of whichever section was read first.
 
 ## Commands
 

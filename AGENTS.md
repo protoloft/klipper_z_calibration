@@ -72,6 +72,7 @@ Examples include:
 - event and object lookup assumptions
 - homing/probing APIs
 - kinematics rail, carriage, and endstop naming assumptions
+- pin setup and the stepper attachment of a plugin-owned endstop
 - probe session APIs
 - bed mesh internals
 - toolhead status access

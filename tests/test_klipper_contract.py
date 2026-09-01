@@ -30,7 +30,8 @@ class KlipperContractTest(unittest.TestCase):
     def make_tree(self, probe_source=None, homing_source=None,
                   bed_mesh_source=None, mcu_source=None,
                   gcode_macro_source=None, manual_probe_source='default',
-                  generic_cartesian_source=None, stepper_source=None):
+                  generic_cartesian_source=None, stepper_source=None,
+                  pins_source=None, query_endstops_source=None):
         """Create a temporary synthetic Klipper source tree."""
         tempdir = tempfile.TemporaryDirectory()
         root = pathlib.Path(tempdir.name)
@@ -62,6 +63,12 @@ class KlipperContractTest(unittest.TestCase):
         (root / 'klippy' / 'stepper.py').write_text(
             stepper_source or self.valid_stepper_source(),
             encoding='utf-8')
+        (root / 'klippy' / 'pins.py').write_text(
+            pins_source or self.valid_pins_source(),
+            encoding='utf-8')
+        (root / 'klippy' / 'extras' / 'query_endstops.py').write_text(
+            query_endstops_source or self.valid_query_endstops_source(),
+            encoding='utf-8')
         if generic_cartesian_source is not None:
             (root / 'klippy' / 'kinematics').mkdir(parents=True)
             (root / 'klippy' / 'kinematics'
@@ -83,6 +90,22 @@ class KlipperContractTest(unittest.TestCase):
             "        primary_carriages = []\n"
             "        self.primary_carriages = primary_carriages\n")
 
+    def valid_pins_source(self):
+        """Return source for the pin setup a plugin-owned endstop needs."""
+        return (
+            "class PrinterPins:\n"
+            "    def setup_pin(self, pin_type, pin_desc):\n"
+            "        pass\n"
+            "    def allow_multi_use_pin(self, pin_desc):\n"
+            "        pass\n")
+
+    def valid_query_endstops_source(self):
+        """Return source for the endstop registration of QUERY_ENDSTOPS."""
+        return (
+            "class QueryEndstops:\n"
+            "    def register_endstop(self, mcu_endstop, name):\n"
+            "        pass\n")
+
     def valid_stepper_source(self):
         """Return source for a rail exposing its registered endstops."""
         return (
@@ -94,7 +117,15 @@ class KlipperContractTest(unittest.TestCase):
             "        self.endstops.append((mcu_endstop, name))\n"
             "        self.query_endstops.register_endstop(mcu_endstop, name)\n"
             "    def get_endstops(self):\n"
-            "        return list(self.endstops)\n")
+            "        return list(self.endstops)\n"
+            + self.mcu_stepper_source())
+
+    def mcu_stepper_source(self):
+        """Return source for the stepper axis test used on mcu_identify."""
+        return (
+            "class MCU_stepper:\n"
+            "    def is_active_axis(self, axis):\n"
+            "        pass\n")
 
     def legacy_stepper_source(self):
         """Return source for the rail class of older Klipper and Kalico."""
@@ -104,7 +135,8 @@ class KlipperContractTest(unittest.TestCase):
             "        self.endstops.append((mcu_endstop, name))\n"
             "        query_endstops.register_endstop(mcu_endstop, name)\n"
             "    def get_endstops(self):\n"
-            "        return list(self.endstops)\n")
+            "        return list(self.endstops)\n"
+            + self.mcu_stepper_source())
 
     def valid_probe_source(self):
         """Return source for a modern supported probe profile."""
@@ -311,6 +343,52 @@ class KlipperContractTest(unittest.TestCase):
             errors = check_contract.check_klipper_contract(root)
         self.assertIn(
             'Klipper contract failed: kinematics VALID_AXES order not found',
+            errors)
+
+    def test_missing_pin_setup_fails(self):
+        # Without setup_pin() the plugin cannot own an endstop on a pin.
+        pins_source = self.valid_pins_source().replace(
+            "    def setup_pin(self, pin_type, pin_desc):\n"
+            "        pass\n", "")
+        tempdir, root = self.make_tree(pins_source=pins_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn('Klipper contract failed: pins setup_pin not found',
+                      errors)
+
+    def test_missing_multi_use_pin_support_fails(self):
+        # Sharing the pin with another consumer depends on this call.
+        pins_source = self.valid_pins_source().replace(
+            "    def allow_multi_use_pin(self, pin_desc):\n"
+            "        pass\n", "")
+        tempdir, root = self.make_tree(pins_source=pins_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: pins allow_multi_use_pin not found',
+            errors)
+
+    def test_missing_query_endstops_register_endstop_fails(self):
+        tempdir, root = self.make_tree(
+            query_endstops_source="class QueryEndstops:\n    pass\n")
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: query_endstops register_endstop'
+            ' not found', errors)
+
+    def test_missing_stepper_axis_test_fails(self):
+        # A plugin-owned endstop selects its Z steppers with this method.
+        stepper_source = self.valid_stepper_source().replace(
+            self.mcu_stepper_source(),
+            "class MCU_stepper:\n"
+            "    def get_name(self):\n"
+            "        pass\n")
+        tempdir, root = self.make_tree(stepper_source=stepper_source)
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+        self.assertIn(
+            'Klipper contract failed: stepper is_active_axis not found',
             errors)
 
     def test_legacy_rail_class_passes_the_baseline(self):

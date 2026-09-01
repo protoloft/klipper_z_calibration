@@ -11,9 +11,11 @@ import unittest
 from fakes import FakeCarriage, FakeConfig, FakeEmptyProbeSession
 from fakes import FakeEndstopRail, FakeError, FakeForeignEndstopRail
 from fakes import FakeGcmd, FakeGenericCartesianKinematics
-from fakes import FakeInactiveRail, FakeLegacyProbe, FakeMCUEndstop
-from fakes import FakeOldProbe, FakePrinter, FakeProbe, FakeProbeSession
-from fakes import FakeProbeWithProbeSession, FakeRail, ProbeResult
+from fakes import FakeKinematics
+from fakes import FakeInactiveRail, FakeInactiveStepper, FakeLegacyProbe
+from fakes import FakeMCUEndstop, FakeOldProbe, FakePrinter, FakeProbe
+from fakes import FakeProbeSession, FakeProbeWithProbeSession, FakeRail
+from fakes import FakeStepper, FakeStepperlessMCUEndstop, ProbeResult
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -40,6 +42,104 @@ def make_connected_helper(printer, values=None):
 def z_rail(printer):
     """Return the rail that registered the fake Z calibration endstop."""
     return FakeEndstopRail(printer.query_endstops.endstops)
+
+
+class ZCalibrationEndstopPinTest(unittest.TestCase):
+    """Covers the plugin-owned calibration endstop on a configured pin."""
+
+    # With 'probe:z_virtual_endstop' the Z rail registers the probe's
+    # helper object, which cannot be probed. The plugin then sets up its
+    # own endstop on the configured pin and keeps using the rail of the
+    # virtual endstop for the homing settings.
+    VIRTUAL_ENDSTOP = None
+
+    def setUp(self):
+        self.printer = FakePrinter()
+        # The probe's HomingViaProbeHelper is not an MCU_endstop, which is
+        # exactly what makes it unusable as a probing target.
+        self.virtual = object()
+        self.printer.query_endstops.endstops = [(self.virtual, 'stepper_z')]
+
+    def make_helper(self, pin='PA1', connect=True):
+        """Build a helper with endstop_pin configured."""
+        config = FakeConfig(self.printer, {'endstop_pin': pin})
+        helper = z_calibration.ZCalibrationHelper(config)
+        self.printer.run_event_handlers('klippy:mcu_identify')
+        if connect:
+            helper.handle_connect()
+        return helper
+
+    def test_endstop_pin_creates_an_own_endstop(self):
+        helper = self.make_helper()
+        self.assertEqual(self.printer.pins.setup_calls,
+                         [('endstop', 'PA1')])
+        self.assertIsNot(helper.z_endstop.mcu_endstop, self.virtual)
+        self.assertIs(helper.z_homing_endstop, self.virtual)
+
+    def test_endstop_pin_allows_sharing_the_bare_pin(self):
+        # tools_calibrate may already own the same pin. Only the bare name
+        # can be passed, because allow_multi_use_pin() parses without
+        # invert or pullup support.
+        self.make_helper(pin='^!PA1')
+        self.assertEqual(self.printer.pins.allowed_multi_use, ['PA1'])
+        self.assertEqual(self.printer.pins.setup_calls,
+                         [('endstop', '^!PA1')])
+
+    def test_endstop_is_registered_under_the_section_name(self):
+        # Registering it as 'z' or 'stepper_z' would make the homing
+        # endstop lookup find the calibration endstop instead.
+        helper = self.make_helper()
+        names = [name for _endstop, name
+                 in self.printer.query_endstops.endstops]
+        self.assertIn('z_calibration', names)
+        self.assertIs(helper.z_homing_endstop, self.virtual)
+
+    def test_mcu_identify_attaches_the_z_steppers(self):
+        z_stepper = FakeStepper()
+        self.printer.toolhead.kinematics = FakeKinematics(
+            steppers=[z_stepper, FakeInactiveStepper()])
+        helper = self.make_helper()
+        self.assertEqual(helper.z_endstop.get_steppers(), [z_stepper])
+
+    def test_startup_fails_without_attached_z_steppers(self):
+        # Klipper drops a stepper-less endstop from the homing move, so the
+        # probing move would run to position_min without a trigger.
+        self.printer.toolhead.kinematics = FakeKinematics(
+            steppers=[FakeInactiveStepper()])
+        with self.assertRaisesRegex(FakeError, 'z_endstop_steppers'):
+            self.make_helper()
+
+    def test_homing_settings_come_from_the_virtual_endstop_rail(self):
+        # The rail that homes Z is found by identity against the probe's
+        # helper object, so the homing settings still latch and
+        # _require_z_homed() keeps working.
+        helper = self.make_helper()
+        helper.handle_home_rails_end(
+            None, [FakeEndstopRail([(self.virtual, 'stepper_z')])])
+        self.assertEqual(helper.z_homing, 0.0)
+        self.assertEqual(helper.probing_speed, 6.0)
+        self.assertEqual(helper.second_speed, 2.0)
+        self.assertEqual(helper.retract_dist, 1.0)
+        self.assertEqual(helper.position_min, -2.0)
+        helper._require_z_homed(FakeGcmd())
+
+    def test_suggestion_names_the_probe_z_offset(self):
+        # With a virtual endstop Klipper takes the rail position_endstop
+        # from the probe, so the number is right but the knob is the probe
+        # z_offset, not a z axis position_endstop that does not exist.
+        helper = self.make_helper()
+        helper.position_z_endstop = 2.0
+        gcmd = FakeGcmd()
+        run = z_calibration.CalibrationRun(helper, gcmd)
+        run._suggest_endstop_position(0.5)
+        self.assertIn('current probe z_offset=2.000', gcmd.responses[0])
+        self.assertIn('new probe z_offset=1.500', gcmd.responses[0])
+
+    def test_without_endstop_pin_a_virtual_endstop_is_still_rejected(self):
+        config = FakeConfig(self.printer)
+        helper = z_calibration.ZCalibrationHelper(config)
+        with self.assertRaisesRegex(FakeError, 'virtual endstop'):
+            helper.handle_connect()
 
 
 class ZCalibrationTest(unittest.TestCase):
@@ -262,6 +362,26 @@ class ZCalibrationTest(unittest.TestCase):
         helper = z_calibration.ZCalibrationHelper(config)
         helper.handle_connect()
         self.assertIs(helper.z_endstop.mcu_endstop, endstop)
+
+    def test_suggestion_names_the_z_axis_position_endstop(self):
+        helper, printer = make_helper()
+        helper.position_z_endstop = 2.0
+        gcmd = FakeGcmd()
+        run = z_calibration.CalibrationRun(helper, gcmd)
+        run._suggest_endstop_position(0.5)
+        self.assertIn('current z axis position_endstop=2.000',
+                      gcmd.responses[0])
+        self.assertIn('new z axis position_endstop=1.500', gcmd.responses[0])
+
+    def test_startup_fails_when_the_rail_endstop_has_no_steppers(self):
+        # The guard is not specific to a plugin-owned endstop. A rail
+        # endstop without steppers would be dropped from the homing move
+        # just the same, so the classic path is checked as well.
+        printer = FakePrinter()
+        printer.query_endstops.endstops = [
+            (FakeStepperlessMCUEndstop(), 'stepper_z')]
+        with self.assertRaisesRegex(FakeError, 'z_endstop_steppers'):
+            make_connected_helper(printer)
 
     def test_handle_connect_resolves_both_endstop_roles(self):
         # The calibration endstop is wrapped for probing_move(); the homing
