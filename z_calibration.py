@@ -350,14 +350,26 @@ class ZCalibrationHelper:
     def _get_nozzle_site(self, gcmd):
         """Resolve the nozzle endstop XY position for this command."""
         nozzle_param = gcmd.get("NOZZLE_POSITION", "")
-        safe_z_home = self.objects_compat.lookup_safe_z_home()
         # from NOZZLE_POSITION parameter
         if nozzle_param:
             return self._parse_xy("NOZZLE_POSITION", nozzle_param, gcmd)
         # from configuration
         if self.nozzle_site is not None:
             return self.nozzle_site
+        # With an endstop_pin the probe homes Z, so [safe_z_home] holds a
+        # position over the bed picked for the probe - never the nozzle over
+        # the calibration switch. Probing there would find no trigger and
+        # drive the nozzle into the bed all the way down to position_min,
+        # so it must not serve as a fallback in that mode.
+        if self.endstop_pin is not None:
+            raise gcmd.error("%s: cannot find a nozzle position! With an"
+                             " endstop_pin, configure the nozzle_xy_position"
+                             " for %s or use the NOZZLE_POSITION parameter."
+                             " [safe_z_home] positions the probe over the"
+                             " bed, not the nozzle over the switch."
+                             % (gcmd.get_command(), self.name))
         # get z-endstop position from safe_z_home
+        safe_z_home = self.objects_compat.lookup_safe_z_home()
         if safe_z_home is not None:
             return [safe_z_home.home_x_pos, safe_z_home.home_y_pos, None]
         raise gcmd.error("%s: cannot find a nozzle position! Either configure"

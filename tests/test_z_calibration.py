@@ -96,6 +96,21 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
             self.assertEqual(self.printer.pins.setup_calls,
                              [('endstop', pin)])
 
+    def test_safe_z_home_is_not_a_nozzle_position_fallback(self):
+        # With an endstop_pin the probe homes Z, so home_xy_position is a
+        # position over the bed picked for the probe. Probing there finds no
+        # trigger and runs down to position_min with the nozzle.
+        helper = self.make_helper()
+        self.printer.objects['safe_z_home'] = types.SimpleNamespace(
+            home_x_pos=7.0, home_y_pos=8.0)
+        with self.assertRaisesRegex(FakeError, 'cannot find a nozzle'):
+            helper._get_nozzle_site(FakeGcmd())
+
+    def test_nozzle_position_parameter_still_works_with_an_endstop_pin(self):
+        helper = self.make_helper()
+        gcmd = FakeGcmd(params={'NOZZLE_POSITION': '1,2'})
+        self.assertEqual(helper._get_nozzle_site(gcmd), [1.0, 2.0, None])
+
     def test_endstop_is_registered_under_the_section_name(self):
         # Registering it as 'z' or 'stepper_z' would make the homing
         # endstop lookup find the calibration endstop instead.
