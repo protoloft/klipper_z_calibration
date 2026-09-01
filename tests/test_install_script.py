@@ -114,6 +114,36 @@ class InstallScriptTest(unittest.TestCase):
         self.assertNotIn('bad_requirements', result.stdout)
         self.assertIn('uninstall', result.stdout)
 
+    def test_uninstall_without_links_does_not_restart_klipper(self):
+        # Nothing was removed, so nothing changed for Klipper. Rerunning -u
+        # stays idempotent and still reports success.
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "restart_klipper(){ echo ran_restart; }\n"
+                "main -u\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("nothing to uninstall", result.stdout)
+            self.assertNotIn("ran_restart", result.stdout)
+
+    def test_uninstall_with_links_restarts_klipper(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink(ROOT / 'z_calibration.py', extras / 'z_calibration.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "restart_klipper(){ echo ran_restart; }\n"
+                "main -u\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("ran_restart", result.stdout)
+            self.assertFalse((extras / 'z_calibration.py').is_symlink())
+
     def test_main_rejects_invalid_num_installs_before_service_checks(self):
         for value in ['0', '-1', 'abc']:
             with self.subTest(value=value):

@@ -243,10 +243,13 @@ uinstall()
         echo "[OK]"
         echo "You can now remove the \"[update_manager z_calibration]\" section in your moonraker.conf and delete this directory."
         echo "You also need to remove the \"[z_calibration]\" section in your Klipper configuration..."
-    else
-        echo -n "z_calibration.py not found. Is it installed? "
-        echo "[FAILED]"
+        return 0
     fi
+    echo -n "z_calibration.py not found, nothing to uninstall. "
+    echo "[SKIPPED]"
+    # Not an error: rerunning -u has to stay idempotent. The caller uses the
+    # status only to decide whether Klipper has to be restarted.
+    return 1
 }
 
 usage()
@@ -287,7 +290,12 @@ main()
         fi
     else
         check_klipper_path
-        uinstall
+        # Nothing removed means nothing changed for Klipper, so there is no
+        # reason to restart it. The "if" also keeps "set -e" from ending the
+        # script on the non-zero status.
+        if ! uinstall; then
+            return 0
+        fi
     fi
     restart_klipper
 }
