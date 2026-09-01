@@ -12,6 +12,23 @@ class FakeError(Exception):
     pass
 
 
+class FakeConfigError(FakeError):
+    """Error type of config.error() and printer.config_error().
+
+    A distinct type per channel lets tests catch a config error being
+    raised from a G-Code handler, where Klipper would report it as an
+    internal error instead of a command response.
+    """
+
+    pass
+
+
+class FakeCommandError(FakeError):
+    """Error type of gcmd.error() and printer.command_error()."""
+
+    pass
+
+
 class FakeMCUEndstop:
     """Minimal MCU endstop surface used by probing_move tests.
 
@@ -135,7 +152,7 @@ class FakeGcmd:
         self.responses.append(message)
 
     def error(self, message):
-        return FakeError(message)
+        return FakeCommandError(message)
 
 
 class FakeGCode:
@@ -206,7 +223,16 @@ class FakeConfig:
     def get_name(self):
         return 'z_calibration'
 
-    def get(self, name, default=None):
+    missing = object()
+
+    def get(self, name, default=missing):
+        if default is self.missing:
+            # Klipper raises its config error for a missing required
+            # option instead of returning None.
+            if name not in self.values:
+                raise self.error("Option '%s' in section '%s' must be"
+                                 " specified" % (name, self.get_name()))
+            return self.values[name]
         return self.values.get(name, default)
 
     def getfloat(self, name, default=None, above=None, minval=None):
@@ -246,7 +272,7 @@ class FakeConfig:
         return value
 
     def error(self, message):
-        return FakeError(message)
+        return FakeConfigError(message)
 
 
 class FakeReactor:
@@ -296,7 +322,9 @@ class FakeHoming:
         self.calls.append((endstop, list(pos), speed))
         result = self.results.pop(0)
         self.toolhead.position[:3] = result[:3]
-        return list(result)
+        # Klipper returns the full toolhead position, extruder included,
+        # not just the three probing axes.
+        return list(self.toolhead.position)
 
 
 class FakeGCodeMove:
@@ -497,9 +525,10 @@ class FakePins:
         # Klipper rejects a second consumer of a pin unless the bare name
         # was allowed for multi use first. Reproduce that, because it is
         # the reason allow_multi_use_pin() has to be called.
-        bare = pin_desc.replace('^', '').replace('!', '')
+        bare = pin_desc.strip().lstrip('^~! ')
         if bare in self.active_pins and bare not in self.allowed_multi_use:
-            raise FakeError("pin %s used multiple times in config" % (bare,))
+            raise FakeConfigError(
+                "pin %s used multiple times in config" % (bare,))
         self.active_pins[bare] = pin_desc
         self.setup_calls.append((pin_type, pin_desc))
         endstop = FakeRecordingMCUEndstop(steppers=[])
@@ -542,7 +571,8 @@ class FakePrinter:
             return self.objects[name]
         if default is not self.missing:
             return default
-        raise KeyError(name)
+        # Klipper raises its config error here, never a KeyError.
+        raise self.config_error("Unknown config object '%s'" % (name,))
 
     def register_event_handler(self, name, handler):
         self.handlers.setdefault(name, []).append(handler)
@@ -553,10 +583,10 @@ class FakePrinter:
             handler(*args)
 
     def config_error(self, message):
-        return FakeError(message)
+        return FakeConfigError(message)
 
     def command_error(self, message):
-        return FakeError(message)
+        return FakeCommandError(message)
 
     def get_reactor(self):
         return self.reactor

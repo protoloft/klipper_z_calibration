@@ -8,7 +8,8 @@ import sys
 import types
 import unittest
 
-from fakes import FakeCarriage, FakeConfig, FakeEmptyProbeSession
+from fakes import FakeCarriage, FakeCommandError, FakeConfig
+from fakes import FakeConfigError, FakeEmptyProbeSession
 from fakes import FakeEndstopRail, FakeError, FakeForeignEndstopRail
 from fakes import FakeGcmd, FakeGenericCartesianKinematics
 from fakes import FakeKinematics
@@ -294,7 +295,7 @@ class ZCalibrationTest(unittest.TestCase):
                 with self.subTest(option=option, raw=raw):
                     printer = FakePrinter()
                     config = FakeConfig(printer, {option: raw})
-                    with self.assertRaises(FakeError):
+                    with self.assertRaises(FakeConfigError):
                         z_calibration.ZCalibrationHelper(config)
 
     def test_float_options_still_accept_finite_values(self):
@@ -476,7 +477,7 @@ class ZCalibrationTest(unittest.TestCase):
     def test_parse_xy_rejects_malformed_gcode_parameter(self):
         helper, _printer = make_helper()
         gcmd = FakeGcmd(params={'NOZZLE_POSITION': '1,2,3'})
-        with self.assertRaisesRegex(FakeError,
+        with self.assertRaisesRegex(FakeCommandError,
                                     'unable to parse NOZZLE_POSITION'):
             helper._parse_xy('NOZZLE_POSITION', '1,2,3', gcmd)
 
@@ -794,7 +795,8 @@ class ZCalibrationTest(unittest.TestCase):
         printer.homing.results = [[5.0, 6.0, 1.0]]
         pos = helper.probe_endstop(FakeGcmd(), helper.z_endstop, -2.0, 3.0,
                             wiggle=True)
-        self.assertEqual(pos, [5.0, 6.0, 1.0])
+        # probing_move returns the full toolhead position, like Klipper.
+        self.assertEqual(pos, [5.0, 6.0, 1.0, 0.0])
         self.assertEqual(printer.toolhead.moves[-3:],
                          [([None, None, 2.0], 4.0),
                           ([5.5, 5.5, None], 20.0),

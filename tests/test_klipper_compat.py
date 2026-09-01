@@ -8,7 +8,8 @@ import sys
 import types
 import unittest
 
-from fakes import FakeCarriage, FakeConfig, FakeEndstopRail, FakeError
+from fakes import FakeCarriage, FakeConfig, FakeConfigError
+from fakes import FakeEndstopRail, FakeError
 from fakes import FakeForeignEndstopRail, FakeGenericCartesianKinematics
 from fakes import FakeInactiveRail, FakeLegacyProbe, FakeMCUEndstop
 from fakes import FakeOldDefaultsProbe, FakePrinter, FakeProbe, FakeRail
@@ -88,10 +89,12 @@ class PrinterObjectCompatTest(unittest.TestCase):
         self.assertIs(compat.lookup_optional_toolhead(), printer.toolhead)
 
     def test_lookup_required_probe_keeps_printer_error_behavior(self):
+        # Klipper reports a missing required object through the printer's
+        # config error, never as a KeyError.
         printer = FakePrinter()
         printer.objects.pop('probe')
         compat = klipper_compat.PrinterObjectCompat(printer)
-        with self.assertRaises(KeyError):
+        with self.assertRaisesRegex(FakeConfigError, 'probe'):
             compat.lookup_probe()
 
     def test_load_startup_objects(self):
