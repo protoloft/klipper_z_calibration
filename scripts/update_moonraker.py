@@ -13,6 +13,11 @@ import tempfile
 
 SECTION_RE = re.compile(r'^\[update_manager(?:\s+[^\]]*)?\s+z_calibration\]$')
 ANY_SECTION_RE = re.compile(r'^\[[^\]]+\]$')
+# Moonraker reads its config with configparser, which accepts ':' and '=' as
+# option delimiters. Looking for ':' alone missed a "channel = stable" and
+# appended a second channel line, which configparser then rejects as a
+# duplicate option and Moonraker fails to start.
+OPTION_DELIMITER_RE = re.compile(r'[:=]')
 
 # Backups are kept, never overwritten. The first changing run writes
 # "<config>.bak", every later one "<config>.bak.001", ".002" and so on.
@@ -41,6 +46,11 @@ def _find_section(lines):
     return start, end
 
 
+def option_key(line):
+    """Return the lower-case option name of a config line."""
+    return OPTION_DELIMITER_RE.split(line, 1)[0].strip().lower()
+
+
 def _new_section(repo_path):
     """Build a default stable Moonraker update_manager section."""
     return [
@@ -67,14 +77,11 @@ def update_config_text(text, repo_path):
         stripped = line.strip()
         if not stripped or stripped.startswith('#'):
             continue
-        key = stripped.split(':', 1)[0].strip().lower()
-        if key == 'channel':
+        if option_key(stripped) == 'channel':
             return text, False
     insert_at = start + 1
     for index in range(start + 1, end):
-        stripped = lines[index].strip()
-        key = stripped.split(':', 1)[0].strip().lower()
-        if key == 'type':
+        if option_key(lines[index].strip()) == 'type':
             insert_at = index + 1
             break
     new_lines = lines[:insert_at] + ["channel: stable"] + lines[insert_at:]

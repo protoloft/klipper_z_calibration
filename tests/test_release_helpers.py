@@ -91,6 +91,29 @@ class MoonrakerUpdateTest(unittest.TestCase):
                 self.assertFalse(changed)
                 self.assertEqual(updated, text)
 
+    def test_preserves_channels_written_with_an_equals_sign(self):
+        # configparser accepts ':' and '=', so Moonraker does too. Missing
+        # the '=' form appended a second channel line, which configparser
+        # then rejects as a duplicate option and Moonraker fails to start.
+        text = (
+            "[update_manager z_calibration]\n"
+            "type = git_repo\n"
+            "channel = stable\n"
+            "path = /repo\n")
+        updated, changed = update_moonraker.update_config_text(text, "/other")
+        self.assertFalse(changed)
+        self.assertEqual(updated, text)
+
+    def test_migrates_a_section_written_with_an_equals_sign(self):
+        text = (
+            "[update_manager z_calibration]\n"
+            "type = git_repo\n"
+            "path = /repo\n")
+        updated, changed = update_moonraker.update_config_text(text, "/repo")
+        self.assertTrue(changed)
+        self.assertIn("type = git_repo\nchannel: stable\npath = /repo",
+                      updated)
+
     def test_file_update_reports_changed_once(self):
         with tempfile.TemporaryDirectory() as tempdir:
             path = pathlib.Path(tempdir) / 'moonraker.conf'
