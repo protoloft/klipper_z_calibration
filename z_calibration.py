@@ -554,23 +554,39 @@ class CalibrationRun:
         self.gcode_offset.set_new_offset(offset)
 
     def _suggest_endstop_position(self, offset):
-        """Suggest the knob that defines the Z homing reference."""
-        # position_z_endstop is the position_endstop of the rail that homes
-        # Z. With a virtual endstop Klipper takes that value from the probe
-        # (rail.position_endstop = mcu_endstop.get_position_endstop()), so
-        # the number stays correct but the knob to change is the probe
-        # z_offset, not a z axis position_endstop that does not exist.
+        """Suggest the config option that holds the Z homing reference."""
         pos_z_estop = self.helper.position_z_endstop
-        new_pos_z_estop = pos_z_estop - offset
-        if self.helper.endstop_pin is not None:
-            knob = 'probe z_offset'
-        else:
-            knob = 'z axis position_endstop'
+        knob = self._endstop_position_knob(pos_z_estop)
+        if knob is None:
+            self.gcmd.respond_info("%s: the z homing reference is off by"
+                                   " %.6f, correct it where it is defined"
+                                   % (self.gcmd.get_command(), offset))
+            return
         self.gcmd.respond_info("%s: current %s=%.3f - new offset=%.6f -->"
                                " POSSIBLE SUGGESTION: new %s=%.3f"
                                % (self.gcmd.get_command(), knob,
                                   pos_z_estop, offset, knob,
-                                  new_pos_z_estop))
+                                  pos_z_estop - offset))
+
+    def _endstop_position_knob(self, pos_z_estop):
+        """Name the config option that holds the Z homing reference."""
+        if self.helper.endstop_pin is None:
+            # The Z rail homes from its own endstop, so position_z_endstop
+            # is that rail's position_endstop.
+            return 'z axis position_endstop'
+        # The rail homes from a virtual endstop, so Klipper took its
+        # position_endstop from the probe and the knob is the probe
+        # z_offset. Only claim that when the probe still reports the same
+        # value: klipper-toolchanger routes per-tool probes and reports 0.0
+        # until a tool is picked, and naming the z_offset then would
+        # suggest writing a number that is not the homing reference.
+        try:
+            z_offset = self.probe_compat.get_offsets()[2]
+        except Exception:
+            return None
+        if abs(pos_z_estop - z_offset) > 1e-6:
+            return None
+        return 'probe z_offset'
 
     def calibrate_z(self, switch_offset, nozzle_site, switch_site, bed_site):
         """Run the complete calibration sequence and store the result."""

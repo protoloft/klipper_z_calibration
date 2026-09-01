@@ -128,12 +128,34 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
         # from the probe, so the number is right but the knob is the probe
         # z_offset, not a z axis position_endstop that does not exist.
         helper = self.make_helper()
-        helper.position_z_endstop = 2.0
+        helper.position_z_endstop = 1.5
         gcmd = FakeGcmd()
         run = z_calibration.CalibrationRun(helper, gcmd)
         run._suggest_endstop_position(0.5)
-        self.assertIn('current probe z_offset=2.000', gcmd.responses[0])
-        self.assertIn('new probe z_offset=1.500', gcmd.responses[0])
+        self.assertIn('current probe z_offset=1.500', gcmd.responses[0])
+        self.assertIn('new probe z_offset=1.000', gcmd.responses[0])
+
+    def test_suggestion_names_no_knob_for_a_routed_probe(self):
+        # klipper-toolchanger routes per-tool probes and reports 0.0 as the
+        # position_endstop until a tool is picked, so the rail reference is
+        # not the probe z_offset and must not be suggested as one.
+        helper = self.make_helper()
+        helper.position_z_endstop = 0.0
+        gcmd = FakeGcmd()
+        run = z_calibration.CalibrationRun(helper, gcmd)
+        run._suggest_endstop_position(0.5)
+        self.assertIn('z homing reference is off by 0.500000',
+                      gcmd.responses[0])
+        self.assertNotIn('z_offset=', gcmd.responses[0])
+
+    def test_suggestion_survives_a_probe_without_offsets(self):
+        helper = self.make_helper()
+        helper.position_z_endstop = 1.5
+        gcmd = FakeGcmd()
+        run = z_calibration.CalibrationRun(helper, gcmd)
+        run.probe_compat.probe = object()
+        run._suggest_endstop_position(0.5)
+        self.assertIn('z homing reference is off by', gcmd.responses[0])
 
     def test_without_endstop_pin_a_virtual_endstop_is_still_rejected(self):
         config = FakeConfig(self.printer)
