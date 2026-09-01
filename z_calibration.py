@@ -35,9 +35,9 @@ class ZCalibrationHelper:
         self.z_homing_endstop = None
         self.last_state = False
         self.last_z_offset = None
-        # None until Klipper has homed the Z rail once. It doubles as
-        # the homed flag, because a Z homing is what defines the
-        # reference every measured position is relative to.
+        # The Z homing reference, filled in when the Z rail is found. It
+        # stays None on a kinematics that exposes no rails until the first
+        # homing event delivers them; the suggestion then names no option.
         self.position_z_endstop = None
         self.name = config.get_name()
         self.printer = config.get_printer()
@@ -224,9 +224,23 @@ class ZCalibrationHelper:
                             % (self.name, self.safe_z_height,
                                SAFE_Z_HEIGHT_FALLBACK))
             self.safe_z_height = SAFE_Z_HEIGHT_FALLBACK
+        # The Z rail settings are static rail configuration, so read them
+        # from the kinematics right away. Waiting for homing:home_rails_end
+        # no longer works everywhere: Klipper homes a probe-homed Z through
+        # a probe session since 2026-05 and fires no event for it.
+        self._latch_z_rail_settings(self.homing_compat.get_kinematic_rails())
 
     def handle_home_rails_end(self, homing_state, rails):
-        """Cache Z rail homing settings after Klipper homes rails."""
+        """Cache Z rail homing settings after Klipper homes rails.
+
+        This is the fallback for a kinematics that exposes no rails to
+        handle_connect. Whether Z is homed is never decided here; that
+        comes from the toolhead's homed_axes status.
+        """
+        self._latch_z_rail_settings(rails)
+
+    def _latch_z_rail_settings(self, rails):
+        """Cache the Z rail homing settings from a list of rails."""
         # get z homing position from the rail that homes z
         for rail in rails:
             settings = self.homing_compat.get_z_rail_settings(
@@ -252,6 +266,7 @@ class ZCalibrationHelper:
         self.last_state = False
         try:
             self._require_z_homed(gcmd)
+            self._require_probing_settings(gcmd)
             nozzle_site = self._get_nozzle_site(gcmd)
             switch_site = self._get_switch_site(gcmd, nozzle_site)
             bed_site = self._get_bed_site(gcmd)
@@ -269,6 +284,7 @@ class ZCalibrationHelper:
     def cmd_PROBE_Z_ACCURACY(self, gcmd):
         """Sample the calibration endstop and report repeatability stats."""
         self._require_z_homed(gcmd)
+        self._require_probing_settings(gcmd)
         speed = gcmd.get_float("PROBE_SPEED", self.second_speed, above=0.)
         lift_speed = gcmd.get_float("LIFT_SPEED", self.lift_speed, above=0.)
         sample_count = gcmd.get_int("SAMPLES", self.samples, minval=1)
@@ -465,11 +481,26 @@ class ZCalibrationHelper:
         return curpos
 
     def _require_z_homed(self, gcmd):
-        """Reject commands until Z homing state is known and current."""
-        if self.position_z_endstop is None:
-            raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
+        """Reject commands while Klipper does not report Z as homed."""
+        # homed_axes is the canonical source, independent of how Z was
+        # homed. The rail settings are guarded separately; they are not a
+        # homing question.
         if not self.toolhead_compat.is_axis_homed('z'):
             raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
+
+    def _require_probing_settings(self, gcmd):
+        """Reject commands while the Z probing settings are unknown."""
+        # Without a recognized Z rail nothing filled these in, and a
+        # probing move with a None speed or depth must never start.
+        settings = [self.probing_speed, self.second_speed,
+                    self.retract_dist, self.position_min]
+        if any(value is None for value in settings):
+            raise gcmd.error(
+                "%s: the z rail settings are unknown! Configure"
+                " probing_speed, probing_second_speed,"
+                " probing_retract_dist and position_min for %s, or home z"
+                " so they can be read from the z rail."
+                % (gcmd.get_command(), self.name))
 
     def move(self, coord, speed):
         """Move through Klipper's toolhead wrapper."""
@@ -645,7 +676,11 @@ class CalibrationRun:
     def _suggest_endstop_position(self, offset):
         """Suggest the config option that holds the Z homing reference."""
         pos_z_estop = self.helper.position_z_endstop
-        knob = self._endstop_position_knob(pos_z_estop)
+        if pos_z_estop is None:
+            # No Z rail was recognized, so there is no number to suggest.
+            knob = None
+        else:
+            knob = self._endstop_position_knob(pos_z_estop)
         if knob is None:
             self.gcmd.respond_info("%s: the z homing reference is off by"
                                    " %.6f, correct it where it is defined"

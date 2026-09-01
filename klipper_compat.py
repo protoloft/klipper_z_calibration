@@ -443,6 +443,30 @@ class HomingCompat:
             return []
         return list(carriages)
 
+    def get_kinematic_rails(self):
+        """Return the rails of the current kinematics, best effort.
+
+        Klipper homes a probe:z_virtual_endstop Z through a probe session
+        since 2026-05 (homing._do_home_z_via_probe) and fires no
+        homing:home_rails_end for it, so the Z rail settings have to be
+        readable without a homing event. generic_cartesian reaches its
+        rails through the carriages; every classic kinematics keeps its
+        rails in a 'rails' attribute by convention. An unknown kinematics
+        yields an empty list and the caller keeps relying on the event.
+        """
+        rails = []
+        for carriage in self._get_carriages():
+            get_rail = getattr(carriage, 'get_rail', None)
+            if get_rail is not None:
+                rails.append(get_rail())
+        if rails:
+            return rails
+        toolhead = self.objects.lookup_optional_toolhead()
+        get_kinematics = getattr(toolhead, 'get_kinematics', None)
+        if get_kinematics is None:
+            return []
+        return list(getattr(get_kinematics(), 'rails', None) or [])
+
     def _endstop_names(self, query_endstops):
         """Return the registered endstop names for error messages."""
         names = [name for _endstop, name in query_endstops.endstops]

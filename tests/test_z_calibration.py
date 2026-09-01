@@ -706,11 +706,87 @@ class ZCalibrationTest(unittest.TestCase):
         printer.toolhead.homed_axes = 'xyz'
         helper._require_z_homed(gcmd)
 
-    def test_require_z_homed_checks_cached_homing_state(self):
+    def test_require_z_homed_ignores_the_settings_latch(self):
+        # Whether Z is homed comes from homed_axes alone. The old check on
+        # position_z_endstop reported "must home axes first" on a Klipper
+        # that homes Z through a probe session without firing
+        # homing:home_rails_end, although Z was homed.
         helper, _printer = make_helper()
         helper.position_z_endstop = None
-        with self.assertRaisesRegex(FakeError, 'must home axes first'):
-            helper._require_z_homed(FakeGcmd())
+        helper._require_z_homed(FakeGcmd())
+
+    def test_missing_probing_settings_reject_probing_commands(self):
+        # No homing event and no kinematic rails: nothing latched the rail
+        # settings, and a probing move with a None speed must never start.
+        printer = FakePrinter()
+        helper = make_connected_helper(printer)
+        for command in [helper.cmd_CALIBRATE_Z, helper.cmd_PROBE_Z_ACCURACY]:
+            with self.subTest(command=command.__name__):
+                with self.assertRaisesRegex(FakeError,
+                                            'z rail settings are unknown'):
+                    command(FakeGcmd())
+
+    def test_configured_probing_settings_satisfy_the_guard(self):
+        # Explicit configuration replaces the rail lookup entirely.
+        printer = FakePrinter()
+        helper = make_connected_helper(printer, {
+            'probing_speed': '6',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1',
+            'position_min': '-2',
+        })
+        helper._require_probing_settings(FakeGcmd())
+
+    def test_connect_latches_settings_from_kinematic_rails(self):
+        # Klipper's probe-homed Z fires no homing:home_rails_end, so the
+        # rail settings have to come from the kinematics at connect time.
+        printer = FakePrinter()
+        printer.toolhead.kinematics = FakeKinematics(
+            rails=[z_rail(printer)])
+        helper = make_connected_helper(printer)
+        self.assertEqual(helper.probing_speed, 6.0)
+        self.assertEqual(helper.second_speed, 2.0)
+        self.assertEqual(helper.retract_dist, 1.0)
+        self.assertEqual(helper.position_min, -2.0)
+        self.assertEqual(helper.position_z_endstop, 0.0)
+
+    def test_probe_homed_z_calibrates_without_a_homing_event(self):
+        # The full Klipper-master scenario: Z homed via probe session, Z
+        # reported homed by the toolhead, no home_rails_end ever fired.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        printer = FakePrinter(probe)
+        printer.toolhead.kinematics = FakeKinematics(
+            rails=[z_rail(printer)])
+        helper = make_connected_helper(printer, {
+            'switch_offset': '0.5',
+            'offset_margins': '-10,10',
+            'samples': '1',
+            'samples_tolerance': '0.5',
+            'samples_tolerance_retries': '0',
+            'lift_speed': '10',
+            'safe_z_height': '5',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+        })
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+
+    def test_suggestion_survives_an_unknown_homing_reference(self):
+        helper, _printer = make_helper()
+        helper.position_z_endstop = None
+        gcmd = FakeGcmd()
+        run = z_calibration.CalibrationRun(helper, gcmd)
+        run._suggest_endstop_position(0.5)
+        self.assertIn('z homing reference is off by', gcmd.responses[0])
+        self.assertNotIn('position_endstop=', gcmd.responses[0])
 
     def test_safe_z_height_uses_absolute_move(self):
         helper, printer = make_helper({'safe_z_height': '8'})

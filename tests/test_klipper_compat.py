@@ -11,7 +11,8 @@ import unittest
 from fakes import FakeCarriage, FakeConfig, FakeConfigError
 from fakes import FakeEndstopRail, FakeError
 from fakes import FakeForeignEndstopRail, FakeGenericCartesianKinematics
-from fakes import FakeInactiveRail, FakeLegacyProbe, FakeMCUEndstop
+from fakes import FakeInactiveRail, FakeKinematics
+from fakes import FakeLegacyProbe, FakeMCUEndstop
 from fakes import FakeOldDefaultsProbe, FakePrinter, FakeProbe, FakeRail
 from fakes import FakeRecordingMCUEndstop, FakeTemplate
 
@@ -575,6 +576,42 @@ class HomingCompatRailSettingsTest(unittest.TestCase):
             self.compat.get_z_rail_settings(FakeForeignEndstopRail(), None))
         self.assertIsNone(
             self.compat.get_z_rail_settings(FakeInactiveRail(), None))
+
+
+class HomingCompatKinematicRailsTest(unittest.TestCase):
+    """Covers reading rails straight from the kinematics.
+
+    Klipper homes a probe:z_virtual_endstop Z through a probe session
+    since 2026-05 and fires no homing:home_rails_end for it, so the rail
+    settings have to be readable without a homing event.
+    """
+
+    def test_classic_kinematics_expose_their_rails_attribute(self):
+        printer = FakePrinter()
+        rail = FakeEndstopRail(printer.query_endstops.endstops)
+        printer.toolhead.kinematics = FakeKinematics(rails=[rail])
+        compat = klipper_compat.HomingCompat(printer)
+        self.assertEqual(compat.get_kinematic_rails(), [rail])
+
+    def test_carriage_kinematics_rails_come_from_the_carriages(self):
+        printer = FakePrinter()
+        rail = FakeEndstopRail(printer.query_endstops.endstops)
+        printer.toolhead.kinematics = FakeGenericCartesianKinematics(
+            [FakeCarriage(2, rail)])
+        compat = klipper_compat.HomingCompat(printer)
+        self.assertEqual(compat.get_kinematic_rails(), [rail])
+
+    def test_unknown_kinematics_yield_no_rails(self):
+        printer = FakePrinter()
+        printer.toolhead.kinematics = types.SimpleNamespace()
+        compat = klipper_compat.HomingCompat(printer)
+        self.assertEqual(compat.get_kinematic_rails(), [])
+
+    def test_missing_toolhead_yields_no_rails(self):
+        printer = FakePrinter()
+        printer.objects.pop('toolhead')
+        compat = klipper_compat.HomingCompat(printer)
+        self.assertEqual(compat.get_kinematic_rails(), [])
 
 
 class RunGcodeTemplateTest(unittest.TestCase):

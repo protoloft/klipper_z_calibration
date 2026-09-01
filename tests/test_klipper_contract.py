@@ -31,7 +31,8 @@ class KlipperContractTest(unittest.TestCase):
                   bed_mesh_source=None, mcu_source=None,
                   gcode_macro_source=None, manual_probe_source='default',
                   generic_cartesian_source=None, stepper_source=None,
-                  pins_source=None, query_endstops_source=None):
+                  pins_source=None, query_endstops_source=None,
+                  cartesian_source=None):
         """Create a temporary synthetic Klipper source tree."""
         tempdir = tempfile.TemporaryDirectory()
         root = pathlib.Path(tempdir.name)
@@ -74,6 +75,11 @@ class KlipperContractTest(unittest.TestCase):
             (root / 'klippy' / 'kinematics'
              / 'generic_cartesian.py').write_text(generic_cartesian_source,
                                                   encoding='utf-8')
+        if cartesian_source is not None:
+            (root / 'klippy' / 'kinematics').mkdir(parents=True,
+                                                   exist_ok=True)
+            (root / 'klippy' / 'kinematics' / 'cartesian.py').write_text(
+                cartesian_source, encoding='utf-8')
         return tempdir, root
 
     def valid_generic_cartesian_source(self):
@@ -232,6 +238,28 @@ class KlipperContractTest(unittest.TestCase):
                 'modern_probe_result_session',
                 'probe_session_xyz_list',
             ])
+
+    def test_classic_kinematics_without_rails_attribute_fails(self):
+        # The rails attribute is what handle_connect reads the Z rail
+        # settings from, because Klipper's probe-homed Z fires no
+        # homing:home_rails_end event.
+        tempdir, root = self.make_tree(cartesian_source=(
+            "class CartKinematics:\n"
+            "    def __init__(self, toolhead, config):\n"
+            "        self.some_carriages = []\n"))
+        with tempdir:
+            errors = check_contract.check_klipper_contract(root)
+            self.assertTrue(
+                any('cartesian.py rails attribute' in error
+                    for error in errors), errors)
+
+    def test_classic_kinematics_with_rails_attribute_passes(self):
+        tempdir, root = self.make_tree(cartesian_source=(
+            "class CartKinematics:\n"
+            "    def __init__(self, toolhead, config):\n"
+            "        self.rails = []\n"))
+        with tempdir:
+            self.assertEqual(check_contract.check_klipper_contract(root), [])
 
     def test_legacy_probe_result_location_passes(self):
         probe_source = self.valid_manual_probe_source()

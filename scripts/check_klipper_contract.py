@@ -19,6 +19,15 @@ class ContractError(Exception):
 PROFILE_VALIDATORS = []
 
 GENERIC_CARTESIAN_PATH = 'klippy/kinematics/generic_cartesian.py'
+# Classic kinematics whose rails the plugin reads at connect time. Kalico
+# and older Klipper do not ship every file, so only present files are
+# checked; the firmware checkouts always contain cartesian.py.
+CLASSIC_KINEMATICS_PATHS = [
+    'klippy/kinematics/cartesian.py',
+    'klippy/kinematics/corexy.py',
+    'klippy/kinematics/corexz.py',
+    'klippy/kinematics/delta.py',
+]
 
 
 def probe_profile(name):
@@ -350,6 +359,22 @@ def validate_generic_cartesian(root, errors):
             'rail primary endstop registration not found', errors)
 
 
+def validate_classic_kinematics(root, errors):
+    """Validate source markers for reading rails from the kinematics."""
+    # Klipper homes a probe:z_virtual_endstop Z through a probe session
+    # since 2026-05 (homing._do_home_z_via_probe) without firing
+    # homing:home_rails_end, so the Z rail settings are read straight from
+    # the kinematics at connect time. Classic kinematics keep their rails
+    # in a 'rails' attribute by convention; generic_cartesian reaches them
+    # through its carriages, which validate_generic_cartesian covers.
+    for relpath in CLASSIC_KINEMATICS_PATHS:
+        if not (pathlib.Path(root) / relpath).is_file():
+            continue
+        source, _tree = read_source(root, relpath)
+        require('self.rails' in source,
+                '%s rails attribute not found' % (relpath,), errors)
+
+
 def validate_gcode_macro(root, errors):
     """Validate source markers for configured G-Code template hooks."""
     source, tree = read_source(root, 'klippy/extras/gcode_macro.py')
@@ -372,6 +397,7 @@ def validate_baseline(root):
         validate_stepper(root, errors)
         validate_pins(root, errors)
         validate_generic_cartesian(root, errors)
+        validate_classic_kinematics(root, errors)
     except ContractError as err:
         errors.append(str(err))
     return errors
