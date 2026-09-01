@@ -596,7 +596,18 @@ class CalibrationRun:
         self.helper.move(site, self.helper.speed)
         self._check_probe_attached()
         if self.helper.first_fast:
+            # first probe just to get down faster
             self.probe_compat.run_probe(self.helper.probing_speed, samples=1)
+            # Klipper's probe session retracts between its own samples but
+            # not after the last one, so the toolhead is left standing on the
+            # trigger point with the probe still pressed. The next probing
+            # move would then start already triggered and either fail the
+            # "Probe triggered prior to movement" check or report the fast
+            # probe's result again. probe_endstop() retracts for the nozzle
+            # and switch sites for the same reason.
+            pos = self.toolhead_compat.get_position()
+            self.helper.move([None, None, pos[2] + self.helper.retract_dist],
+                             self.helper.lift_speed)
         probe_result = self.probe_compat.run_probe(self.helper.second_speed)
         curpos = self.probe_compat.get_test_position(probe_result)
         self.gcode.respond_info("%s: probe at %.3f,%.3f is z=%.6f"

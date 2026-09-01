@@ -332,16 +332,24 @@ class FakeProbeEndstop:
 class FakeProbeSession:
     """Probe session with queued results and command capture."""
 
-    def __init__(self, results, end_exception=None):
+    def __init__(self, results, end_exception=None, toolhead=None):
         self.results = list(results)
         self.pending = []
         self.run_gcmds = []
+        self.start_positions = []
         self.ended = False
         self.end_exception = end_exception
+        # With a toolhead the session reproduces what Klipper does to it:
+        # a probing move leaves it standing on the trigger position.
+        self.toolhead = toolhead
 
     def run_probe(self, gcmd):
         self.run_gcmds.append(gcmd)
-        self.pending.append(self.results.pop(0))
+        result = self.results.pop(0)
+        if self.toolhead is not None:
+            self.start_positions.append(self.toolhead.position[2])
+            self.toolhead.position[2] = result.test_z
+        self.pending.append(result)
 
     def pull_probed_results(self):
         results = self.pending

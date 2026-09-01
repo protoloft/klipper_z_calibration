@@ -1134,6 +1134,33 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(session.run_gcmds[0].params['SAMPLES'], '1')
         self.assertEqual(session.run_gcmds[1].params['PROBE_SPEED'], '2.0')
 
+    def test_probe_bed_first_fast_retracts_before_the_samples(self):
+        # Klipper's session retracts between its own samples but not after
+        # the last one. Without a retract here the slow probe would start on
+        # the trigger point of the fast one, with the probe still pressed.
+        printer = FakePrinter()
+        session = FakeProbeSession([
+            ProbeResult(0.0, 0.0, 0.0, 1.0, 2.0, 3.0),
+            ProbeResult(0.0, 0.0, 0.0, 1.0, 2.0, 4.0),
+        ], toolhead=printer.toolhead)
+        printer.probe = FakeProbe(session=session)
+        printer.objects['probe'] = printer.probe
+        helper = make_connected_helper(printer, {
+            'probing_first_fast': 'true',
+            'probing_speed': '10',
+            'probing_second_speed': '2',
+            'probing_retract_dist': '1.5',
+            'lift_speed': '9',
+        })
+        helper.handle_home_rails_end(None, [z_rail(printer)])
+        run = z_calibration.CalibrationRun(helper, FakeGcmd())
+        run.probe_compat.start()
+        run._probe_bed_on_site([1.0, 2.0, None])
+        # The fast probe triggered at 3.0, so the slow one has to start
+        # above it, not on it.
+        self.assertEqual(session.start_positions[1], 4.5)
+        self.assertIn(([None, None, 4.5], 9.0), printer.toolhead.moves)
+
     def test_check_probe_attached_rejects_triggered_probe(self):
         probe = FakeProbe()
         probe.mcu_probe.triggered = True
