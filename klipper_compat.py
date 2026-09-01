@@ -34,6 +34,15 @@ def _strip_pin_modifiers(pin):
     return pin.strip().lstrip(_PIN_MODIFIERS)
 
 
+def _query_endstop_candidates(probe):
+    """Return probe objects that may expose query_endstop()."""
+    probe_endstop = getattr(probe, 'mcu_probe', None)
+    candidates = [probe, probe_endstop]
+    if probe_endstop is not None:
+        candidates.append(getattr(probe_endstop, 'mcu_endstop', None))
+    return [candidate for candidate in candidates if candidate is not None]
+
+
 def _missing_probing_endstop_methods(endstop):
     """Return MCU endstop methods missing from a probing target."""
     return [name for name in _PROBING_ENDSTOP_METHODS
@@ -240,18 +249,10 @@ class RuntimeContractValidator:
         topic = 'probe_endstop_query'
         # Query support is separate from probing_move support. A wrapper can
         # expose query_endstop() while lacking the MCU endstop methods.
-        for candidate in self._query_endstop_candidates():
+        for candidate in _query_endstop_candidates(self.probe):
             if self._has_callable(candidate, 'query_endstop'):
                 return
         self._fail(topic, 'probe endstop query API is not supported')
-
-    def _query_endstop_candidates(self):
-        """Return probe objects that may expose query_endstop()."""
-        probe_endstop = getattr(self.probe, 'mcu_probe', None)
-        candidates = [self.probe, probe_endstop]
-        if probe_endstop is not None:
-            candidates.append(getattr(probe_endstop, 'mcu_endstop', None))
-        return [candidate for candidate in candidates if candidate is not None]
 
     def _lookup(self, topic, lookup_func):
         """Translate lookup failures into named contract failures."""
@@ -605,7 +606,7 @@ class ProbeCompat:
 
     def query_endstop(self, print_time):
         """Query the first supported probe endstop candidate."""
-        for probe_endstop in self._query_endstop_candidates():
+        for probe_endstop in _query_endstop_candidates(self.probe):
             query_endstop = getattr(probe_endstop, 'query_endstop', None)
             if query_endstop is not None:
                 return query_endstop(print_time)
@@ -636,11 +637,20 @@ class ProbeCompat:
 
     def get_test_position(self, probe_result):
         """Extract the raw trigger/test position from a probe result."""
+        # Current Klipper returns manual_probe.ProbeResult, a named tuple of
+        # (bed_x, bed_y, bed_z, test_x, test_y, test_z). Its fields carry the
+        # trigger position; bed_z has the probe z_offset subtracted and must
+        # not be used here, see calibrate_z().
         if hasattr(probe_result, 'test_z'):
             return [probe_result.test_x, probe_result.test_y,
                     probe_result.test_z]
+        # The same six values without the named tuple around them. No
+        # supported firmware returns that today; it is here so that a plain
+        # tuple in that field order cannot be read as a bed position.
         if len(probe_result) >= 6:
             return [probe_result[3], probe_result[4], probe_result[5]]
+        # Klipper v0.13.0 and older append epos[:3] from the probing move,
+        # which is the trigger position already.
         return probe_result[:3]
 
     def _create_probe_gcmd(self, speed, samples):
@@ -660,14 +670,6 @@ class ProbeCompat:
         })
         command = self.gcmd.get_command()
         return self.gcode.create_gcode_command(command, command, params)
-
-    def _query_endstop_candidates(self):
-        """Return probe objects that may expose query_endstop()."""
-        probe_endstop = getattr(self.probe, 'mcu_probe', None)
-        candidates = [self.probe, probe_endstop]
-        if probe_endstop is not None:
-            candidates.append(getattr(probe_endstop, 'mcu_endstop', None))
-        return [candidate for candidate in candidates if candidate is not None]
 
 
 class GCodeOffsetCompat:

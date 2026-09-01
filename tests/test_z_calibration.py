@@ -127,7 +127,7 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
         helper = self.make_helper()
         helper.handle_home_rails_end(
             None, [FakeEndstopRail([(self.virtual, 'stepper_z')])])
-        self.assertEqual(helper.z_homing, 0.0)
+        self.assertEqual(helper.position_z_endstop, 0.0)
         self.assertEqual(helper.probing_speed, 6.0)
         self.assertEqual(helper.second_speed, 2.0)
         self.assertEqual(helper.retract_dist, 1.0)
@@ -477,7 +477,6 @@ class ZCalibrationTest(unittest.TestCase):
         printer = FakePrinter()
         helper = make_connected_helper(printer)
         helper.handle_home_rails_end(None, [z_rail(printer)])
-        self.assertEqual(helper.z_homing, 0.0)
         self.assertEqual(helper.position_z_endstop, 0.0)
         self.assertEqual(helper.probing_speed, 6.0)
         self.assertEqual(helper.second_speed, 2.0)
@@ -490,7 +489,6 @@ class ZCalibrationTest(unittest.TestCase):
         printer = FakePrinter()
         helper = make_connected_helper(printer)
         helper.handle_home_rails_end(None, [FakeForeignEndstopRail()])
-        self.assertIsNone(helper.z_homing)
         self.assertIsNone(helper.position_z_endstop)
         self.assertIsNone(helper.probing_speed)
         self.assertIsNone(helper.second_speed)
@@ -511,7 +509,6 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(helper.retract_dist, 1.0)
         self.assertEqual(helper.position_min, -2.0)
         self.assertEqual(helper.position_z_endstop, 0.0)
-        self.assertEqual(helper.z_homing, 0.0)
 
     def test_handle_connect_rejects_virtual_z_endstop(self):
         printer = FakePrinter()
@@ -552,14 +549,14 @@ class ZCalibrationTest(unittest.TestCase):
         config = FakeConfig(printer)
         helper = z_calibration.ZCalibrationHelper(config)
         helper.handle_home_rails_end(None, [FakeInactiveRail()])
-        self.assertIsNone(helper.z_homing)
+        self.assertIsNone(helper.position_z_endstop)
 
     def test_handle_home_rails_end_accepts_rails_without_endstops(self):
         # A rail that does not report its endstops keeps the axis test.
         printer = FakePrinter()
         helper = make_connected_helper(printer)
         helper.handle_home_rails_end(None, [FakeRail()])
-        self.assertEqual(helper.z_homing, 0.0)
+        self.assertEqual(helper.position_z_endstop, 0.0)
         self.assertEqual(helper.probing_speed, 6.0)
 
     def test_calculate_switch_offset_requires_calibration_first(self):
@@ -595,7 +592,7 @@ class ZCalibrationTest(unittest.TestCase):
 
     def test_require_z_homed_checks_cached_homing_state(self):
         helper, _printer = make_helper()
-        helper.z_homing = None
+        helper.position_z_endstop = None
         with self.assertRaisesRegex(FakeError, 'must home axes first'):
             helper._require_z_homed(FakeGcmd())
 

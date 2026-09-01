@@ -33,9 +33,11 @@ class ZCalibrationHelper:
         self.state = None
         self.z_endstop = None
         self.z_homing_endstop = None
-        self.z_homing = None
         self.last_state = False
         self.last_z_offset = None
+        # None until Klipper has homed the Z rail once. It doubles as
+        # the homed flag, because a Z homing is what defines the
+        # reference every measured position is relative to.
         self.position_z_endstop = None
         self.name = config.get_name()
         self.printer = config.get_printer()
@@ -232,7 +234,6 @@ class ZCalibrationHelper:
             if settings is None:
                 continue
             # get homing settings from z rail
-            self.z_homing = settings['position_endstop']
             if self.probing_speed is None:
                 self.probing_speed = settings['homing_speed']
             if self.second_speed is None:
@@ -442,7 +443,7 @@ class ZCalibrationHelper:
 
     def _require_z_homed(self, gcmd):
         """Reject commands until Z homing state is known and current."""
-        if self.z_homing is None:
+        if self.position_z_endstop is None:
             raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
         if not self.toolhead_compat.is_axis_homed('z'):
             raise gcmd.error("%s: must home axes first" % (gcmd.get_command()))
@@ -512,7 +513,7 @@ class CalibrationRun:
         self.objects_compat = helper.objects_compat
         self.probe = self.objects_compat.lookup_probe()
         self.probe_compat = ProbeCompat(helper, self.probe, gcmd)
-        self.toolhead_compat = ToolheadCompat(helper.printer)
+        self.toolhead_compat = helper.toolhead_compat
         if helper.offset_gcode is None:
             gcode_move = self.objects_compat.lookup_gcode_move()
         else:
