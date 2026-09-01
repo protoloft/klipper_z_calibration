@@ -12,6 +12,9 @@ jobs:
   firmware-contract:
     name: Firmware contracts
     runs-on: ubuntu-latest
+    # The job clones two firmware repositories; a hanging network fetch
+    # must not occupy a runner for the default six hours.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository

@@ -64,6 +64,52 @@ class IterFilesTest(unittest.TestCase):
         self.assertEqual(self.collect(build), ['README.md'])
 
 
+class FileCheckTest(unittest.TestCase):
+    """Covers per-file line ending and control character detection."""
+
+    def check_bytes(self, name, data):
+        """Return the errors reported for one file's raw content."""
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = pathlib.Path(tempdir)
+            path = root / name
+            path.write_bytes(data)
+            original = check_whitespace.ROOT
+            check_whitespace.ROOT = root
+            errors = []
+            try:
+                check_whitespace.check_file(path, errors)
+            finally:
+                check_whitespace.ROOT = original
+            return errors
+
+    def test_crlf_files_are_rejected(self):
+        # splitlines() used to swallow the '\r', so a pure CRLF file
+        # passed every check.
+        errors = self.check_bytes('sample.py', b'x = 1\r\ny = 2\r\n')
+        self.assertEqual(len(errors), 2)
+        for error in errors:
+            self.assertIn('carriage return', error)
+
+    def test_form_feed_is_rejected_in_non_python_files(self):
+        # In a .py file ast.parse caught this incidentally; in every other
+        # file type it passed and silently shifted later line numbers.
+        errors = self.check_bytes('sample.md', b'before\x0cafter\n')
+        self.assertEqual(len(errors), 1)
+        self.assertIn('invalid control character', errors[0])
+
+    def test_unicode_line_separators_are_rejected(self):
+        for separator in ['\x85', '\u2028', '\u2029']:
+            with self.subTest(separator=separator):
+                data = ('x%sy\n' % (separator,)).encode('utf-8')
+                errors = self.check_bytes('sample.sh', data)
+                self.assertEqual(len(errors), 1)
+                self.assertIn('invalid control character', errors[0])
+
+    def test_clean_file_reports_nothing(self):
+        errors = self.check_bytes('sample.md', b'hello\nworld\n')
+        self.assertEqual(errors, [])
+
+
 class BlankLineTest(unittest.TestCase):
     """Covers the blank line rule for class and function definitions."""
 

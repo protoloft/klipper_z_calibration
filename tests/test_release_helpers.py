@@ -65,6 +65,18 @@ class MoonrakerUpdateTest(unittest.TestCase):
         self.assertIn("channel: stable", updated)
         self.assertIn("path: /repo", updated)
 
+    def test_preserves_crlf_line_endings(self):
+        # A CRLF moonraker.conf must not come back rewritten to LF end to
+        # end - that would change every line outside the edited section.
+        text = "[server]\r\nhost: 0.0.0.0\r\n"
+        updated, changed = update_moonraker.update_config_text(
+            text, "/repo")
+        self.assertTrue(changed)
+        self.assertIn("[server]\r\nhost: 0.0.0.0\r\n", updated)
+        self.assertIn("[update_manager z_calibration]\r\n", updated)
+        self.assertTrue(updated.endswith("\r\n"))
+        self.assertNotRegex(updated, r'[^\r]\n')
+
     def test_migrates_existing_section_without_channel(self):
         text = (
             "[update_manager z_calibration]\n"

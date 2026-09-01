@@ -426,7 +426,9 @@ def parse_args(argv):
 
 def main(argv=None):
     """CLI entrypoint for source contract validation."""
-    args = parse_args(argv or sys.argv[1:])
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parse_args(argv)
     errors = check_klipper_contract(args.klipper_path)
     if errors:
         sys.stderr.write('\n'.join(errors) + '\n')

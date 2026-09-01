@@ -9,8 +9,13 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tempfile
 
 
+# Anchor every command at the repository root: run from anywhere else the
+# relative paths below would fail, or worse, silently validate whatever
+# tests/ directory or git repository the current directory happens to hold.
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PYTHON = sys.executable or 'python3'
 PYTHON_TARGETS = (
     'z_calibration.py',
@@ -18,8 +23,12 @@ PYTHON_TARGETS = (
     'scripts',
     'tests',
 )
+# Per-user path: a fixed shared /tmp name fails with permission errors on a
+# multi-user machine as soon as another user created it first.
 PYCACHE_ENV = {
-    'PYTHONPYCACHEPREFIX': '/tmp/klipper_z_calibration-pycache',
+    'PYTHONPYCACHEPREFIX': os.path.join(
+        tempfile.gettempdir(),
+        'klipper_z_calibration-pycache-%d' % (os.getuid(),)),
 }
 TEST_ENV = {
     'PYTHONDONTWRITEBYTECODE': '1',
@@ -121,7 +130,7 @@ def run_command(command, env_updates=None):
     env = os.environ.copy()
     if env_updates:
         env.update(env_updates)
-    return subprocess.call(command, env=env)
+    return subprocess.call(command, env=env, cwd=ROOT)
 
 
 def run_all(commands=COMMANDS):

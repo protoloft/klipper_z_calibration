@@ -9,6 +9,7 @@ import importlib.util
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 
@@ -97,6 +98,13 @@ def version_key(tag):
 def clone_or_update(path, url, ref, update=True):
     """Create or refresh one local firmware checkout."""
     path = pathlib.Path(path)
+    if path.exists() and not (path / '.git').is_dir():
+        # An interrupted clone leaves a partial directory, and every later
+        # run would then die inside "git fetch" with an unrelated-looking
+        # error. The directory is this script's own cache, so throw it
+        # away and clone it again.
+        sys.stdout.write("removing broken checkout %s\n" % (path,))
+        shutil.rmtree(path)
     if not path.exists():
         if ref is None:
             raise RuntimeError(
@@ -169,7 +177,9 @@ def parse_args(argv):
 
 def main(argv=None):
     """CLI entrypoint for firmware compatibility checks."""
-    args = parse_args(argv or sys.argv[1:])
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parse_args(argv)
     try:
         return run_checks(args.repo_dir, update=not args.no_update)
     except (RuntimeError, subprocess.CalledProcessError) as err:

@@ -45,6 +45,9 @@ DEFINITION_NODES = (ast.AsyncFunctionDef, ast.ClassDef, ast.FunctionDef)
 # that pair on adjacent lines, so the blank line is required before the pair
 # and not between its two halves.
 HELP_SUFFIX = '_help'
+# Unicode line separators above the ASCII control range. The ord() < 32 test
+# cannot see them, and splitlines() would hide them as line breaks.
+UNICODE_LINE_BREAKS = '\x85\u2028\u2029'
 
 
 def iter_files():
@@ -168,7 +171,17 @@ def check_file(path, errors):
         report(errors, path, None, "missing newline at end of file")
     if text.endswith('\n\n'):
         report(errors, path, None, "extra blank line at end of file")
-    for lineno, line in enumerate(text.splitlines(), start=1):
+    # Split on '\n' only. splitlines() also breaks on '\r', form feeds and
+    # the Unicode separators, so a CRLF file or a stray control character
+    # never reached the checks below and passed silently.
+    lines = text.split('\n')
+    if lines and lines[-1] == '':
+        lines.pop()
+    for lineno, line in enumerate(lines, start=1):
+        if line.endswith('\r'):
+            report(errors, path, lineno, "carriage return line ending")
+            # Keep the remaining checks on the payload of the line.
+            line = line[:-1]
         if line.endswith(' ') or line.endswith('\t'):
             report(errors, path, lineno, "trailing whitespace")
         if '\t' in line and not is_makefile(path):
@@ -176,7 +189,8 @@ def check_file(path, errors):
         if path.suffix == '.py' and len(line) > 80:
             report(errors, path, lineno, "line longer than 80 characters")
         for column, char in enumerate(line, start=1):
-            if ord(char) < 32 and char != '\t':
+            if char in UNICODE_LINE_BREAKS or (ord(char) < 32
+                                               and char != '\t'):
                 msg = "invalid control character at column %d" % (column,)
                 report(errors, path, lineno, msg)
     if path.suffix == '.py':

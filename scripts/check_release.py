@@ -73,7 +73,9 @@ def parse_args(argv):
 
 def main(argv=None):
     """CLI entrypoint for release metadata validation."""
-    args = parse_args(argv or sys.argv[1:])
+    if argv is None:
+        argv = sys.argv[1:]
+    args = parse_args(argv)
     try:
         metadata = classify_tag(args.tag)
         validate_channel(metadata, args.channel)

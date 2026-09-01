@@ -67,11 +67,14 @@ def _new_section(repo_path):
 
 def update_config_text(text, repo_path):
     """Add or migrate the update_manager section in Moonraker config text."""
+    # Preserve the line ending style: rewriting a CRLF config to LF end to
+    # end would change every line, far outside the edited section.
+    newline = "\r\n" if "\r\n" in text else "\n"
     lines = text.splitlines()
     start, end = _find_section(lines)
     if start is None:
         new_lines = lines + _new_section(repo_path)
-        return "\n".join(new_lines).rstrip() + "\n", True
+        return newline.join(new_lines).rstrip() + newline, True
     section = lines[start:end]
     for line in section[1:]:
         stripped = line.strip()
@@ -85,7 +88,7 @@ def update_config_text(text, repo_path):
             insert_at = index + 1
             break
     new_lines = lines[:insert_at] + ["channel: stable"] + lines[insert_at:]
-    return "\n".join(new_lines).rstrip() + "\n", True
+    return newline.join(new_lines).rstrip() + newline, True
 
 
 def update_config_file(path, repo_path):

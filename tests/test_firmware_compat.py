@@ -140,6 +140,32 @@ class FirmwareCompatTest(unittest.TestCase):
         self.assertIn('Firmware compatibility result: OK',
                       output.getvalue())
 
+    def test_clone_or_update_replaces_a_broken_checkout(self):
+        # An interrupted clone leaves a partial directory; a later run
+        # used to die inside "git fetch" with no hint at the remedy.
+        with tempfile.TemporaryDirectory() as tempdir:
+            path = pathlib.Path(tempdir) / 'klipper-master'
+            path.mkdir()
+            (path / 'partial.txt').write_text('leftover\n', encoding='utf-8')
+            commands = []
+            old_run = firmware_compat.run
+
+            def fake_run(command, cwd=None, capture=False):
+                commands.append(tuple(command[:2]))
+
+            firmware_compat.run = fake_run
+            try:
+                buffer = io.StringIO()
+                with contextlib.redirect_stdout(buffer):
+                    firmware_compat.clone_or_update(
+                        path, 'https://example.invalid/klipper.git',
+                        'master')
+            finally:
+                firmware_compat.run = old_run
+            self.assertFalse(path.exists())
+            self.assertEqual(commands, [('git', 'clone')])
+            self.assertIn('removing broken checkout', buffer.getvalue())
+
     def test_no_update_requires_existing_checkouts(self):
         old_latest = firmware_compat.latest_klipper_tag
         try:

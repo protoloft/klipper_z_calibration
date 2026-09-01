@@ -19,6 +19,12 @@ extend-exclude = [
     ".pytest_cache",
     ".ruff_cache",
     "__pycache__",
+    # Local tool output scripts/check_whitespace.py skips as well. Most are
+    # already in ruff's default excludes; "env" and "htmlcov" are not.
+    "env",
+    "htmlcov",
+    "venv",
+    ".venv",
 ]
 
 [lint]

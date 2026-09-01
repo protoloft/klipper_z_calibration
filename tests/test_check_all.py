@@ -6,7 +6,9 @@
 import contextlib
 import importlib.util
 import io
+import os
 import pathlib
+import tempfile
 import unittest
 
 
@@ -229,9 +231,29 @@ class CheckAllTest(unittest.TestCase):
             if '-m' in command and 'compileall' in command
         ]
         self.assertEqual(len(compile_envs), 1)
-        self.assertEqual(
-            compile_envs[0]['PYTHONPYCACHEPREFIX'],
-            '/tmp/klipper_z_calibration-pycache')
+        prefix = compile_envs[0]['PYTHONPYCACHEPREFIX']
+        self.assertTrue(prefix.startswith(tempfile.gettempdir()),
+                        prefix)
+        # Per-user path: a fixed shared name breaks on multi-user hosts.
+        self.assertIn('-pycache-%d' % (os.getuid(),), prefix)
+
+    def test_commands_run_anchored_at_the_repository_root(self):
+        # check_all must work from any working directory instead of
+        # validating whatever tree the caller happens to be in.
+        calls = []
+        old_call = check_all.subprocess.call
+
+        def fake_call(command, env=None, cwd=None):
+            calls.append(cwd)
+            return 0
+
+        check_all.subprocess.call = fake_call
+        try:
+            check_all.run_command(('true',))
+        finally:
+            check_all.subprocess.call = old_call
+        self.assertEqual(calls, [check_all.ROOT])
+        self.assertEqual(pathlib.Path(check_all.ROOT), ROOT)
 
 
 if __name__ == '__main__':
