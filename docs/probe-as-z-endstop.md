@@ -32,7 +32,7 @@ assumes the calibration endstop is the endstop of the Z rail.
 
 ### 1. The endstop is not discoverable
 
-`HomingCompat.get_z_endstop` (`klipper_compat.py:308`) looks the
+`HomingCompat.get_z_endstop` (`klipper_compat.py`) looks the
 calibration endstop up in `query_endstops` or on the kinematic carriage.
 Rails register their endstop there themselves
 (`GenericPrinterRail.lookup_endstop`), so with a virtual Z endstop the
@@ -93,10 +93,11 @@ and is never reached in this mode.
 
 With a virtual endstop Klipper sets
 `rail.position_endstop = mcu_endstop.get_position_endstop()`
-(`klippy/stepper.py:341`), which for the probe is its `z_offset`. The
-suggestion printed by `calibrate_z` (`z_calibration.py:593`),
-"new z axis position_endstop=...", would therefore be mislabeled. The
-equivalent knob in this configuration is the probe `z_offset`.
+(`PrinterRail.__init__` in `klippy/stepper.py`), which for the probe is
+its `z_offset`. The suggestion printed by `calibrate_z` in
+`z_calibration.py`, "new z axis position_endstop=...", would therefore
+be mislabeled. The equivalent knob in this configuration is the probe
+`z_offset`.
 
 ## Klipper has no generic "switch" section
 
@@ -127,18 +128,18 @@ has to set it up itself.
 klipper-toolchanger) already does exactly this, and it is the reference
 to compare an implementation against:
 
-- `ProbeEndstopWrapper.__init__` (`tools_calibrate.py:438`) reads a
+- `ProbeEndstopWrapper.__init__` in `tools_calibrate.py` reads a
   `pin:` option, calls `ppins.allow_multi_use_pin()` with the bare pin
   name, then `ppins.lookup_pin(pin, can_invert=True, can_pullup=True)`
   and `mcu.setup_pin("endstop", pin_params)`
 - it registers `klippy:mcu_identify` and, in `_handle_mcu_identify`
-  (`tools_calibrate.py:469`), attaches every kinematic stepper with
+  of that class, attaches every kinematic stepper with
   `is_active_axis(axis)` to that endstop
 - it exposes the MCU endstop surface by forwarding, which is the same
-  thing `EndstopWrapper` in `klipper_compat.py:270` already does
-- it builds *three* such endstops (X, Y and Z) from the *same* pin
-  (`tools_calibrate.py:46-48`), which is why the multi-use call is
-  there
+  thing `EndstopWrapper` in `klipper_compat.py` already does
+- it builds *three* such endstops (X, Y and Z) from the *same* pin in
+  its `PrinterToolsCalibrate.__init__`, which is why the multi-use call
+  is there
 
 That last point is the important one: several independent endstop
 objects on one physical pin are an established, working pattern, not a
@@ -163,8 +164,8 @@ workaround.
   Z, whatever its type; `get_z_endstop()` keeps the virtual guard and the
   wrapper on top of it. No alternative rail resolution and no additional
   required options; see the correction under failure mode 3.
-- **`_require_z_homed` is unchanged.** `z_homing` still latches, because
-  the rail of the virtual endstop is still found.
+- **`_require_z_homed` is unchanged.** `position_z_endstop` still latches,
+  because the rail of the virtual endstop is still found.
 - **Reword the `position_endstop` suggestion** in this mode (see 4). The
   arithmetic is unchanged, because `rail.position_endstop` *is* the probe
   `z_offset` here; only the name of the knob differs.
@@ -184,10 +185,10 @@ The request originates from a toolchanger, where the Z pin already
 exists to measure the Z difference between the tool heads - the job
 `tools_calibrate` does. The same pin can serve both.
 
-**Sharing the pin works.** `PrinterPins.lookup_pin`
-(`klippy/pins.py:96`) rejects a pin that is already active *unless* it
-is in `allow_multi_use_pins`, and `allow_multi_use_pin`
-(`klippy/pins.py:132`) can be called by either consumer, so section
+**Sharing the pin works.** `PrinterPins.lookup_pin` in
+`klippy/pins.py` rejects a pin that is already active *unless* it
+is in `allow_multi_use_pins`, and `allow_multi_use_pin` in the same
+class can be called by either consumer, so section
 order does not matter. `setup_pin()` then creates a fresh MCU endstop
 object with its own trsync and its own stepper list. Both Klipper and
 Kalico have both functions.
@@ -208,13 +209,14 @@ own endstop on a shared pin has no such dependency.
 
 - **Per-tool result.** Klipper's G-Code offset is global, but the
   calculated offset belongs to the *active* tool. `offset_gcode`
-  (`z_calibration.py:76`) already exists for exactly this: it replaces
+  (`z_calibration.py`) already exists for exactly this: it replaces
   `SET_GCODE_OFFSET` with user G-Code, so the result can be routed into
   the toolchanger's per-tool offset. This needs a documented example,
   not new code.
-- **Per-tool XY.** `_move` goes through `toolhead.manual_move`, which
+- **Per-tool XY.** `move()` goes through `toolhead.manual_move`, which
   moves in toolhead coordinates and does *not* apply G-Code offsets
-  (`klippy/toolhead.py:410`). The XY that places a nozzle over the pin
+  (`ToolHead.manual_move` in `klippy/toolhead.py`). The XY that places
+  a nozzle over the pin
   therefore differs per tool. The existing `NOZZLE_POSITION` and
   `SWITCH_POSITION` command parameters cover this, so a per-tool macro
   can pass them; the single `nozzle_xy_position` config value cannot.

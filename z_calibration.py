@@ -323,6 +323,17 @@ class ZCalibrationHelper:
                              % (gcmd.get_command()))
         switch_offset = self._get_switch_offset(gcmd)
         pos = self.toolhead_compat.get_position()
+        # Derivation. calibrate_z() computed, with the old switch_offset,
+        #     last_z_offset = probe_zero - (switch_zero - nozzle_zero
+        #                                   + switch_offset)
+        # The user then moved the nozzle down to the surface, so the current
+        # Z is how far the applied offset was still off:
+        #     error = current_z - last_z_offset
+        # switch_offset enters that formula negated, so subtracting the error
+        # from it makes the next run land on the surface:
+        #     new_switch_offset = switch_offset - error
+        # A larger switch_offset therefore moves the nozzle closer to the bed,
+        # which is the rule the whole configuration is written around.
         new_switch_offset = switch_offset - (pos[2] - self.last_z_offset)
         if new_switch_offset > 0.0:
             gcmd.respond_info("%s: switch_offset=%.3f - (current_z=%.3f -"

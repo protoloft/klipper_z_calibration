@@ -146,11 +146,14 @@ jobs:
                   echo "Release $RELEASE_TAG already exists and is not a draft" >&2
                   exit 1
               fi
+              # -F converts its value ("true"/"false" to a boolean), -f keeps
+              # it a string. The release name has to stay a string, or a tag
+              # that parses as a number would be sent as one.
               gh api --method PATCH \
                   "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
                   -F draft=true \
                   -F prerelease="$PRERELEASE" \
-                  -F name="$RELEASE_TITLE" >/dev/null
+                  -f name="$RELEASE_TITLE" >/dev/null
               gh release upload "$RELEASE_TAG" dist/*.tar.gz --clobber
               exit 0
           fi
