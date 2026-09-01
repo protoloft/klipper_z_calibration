@@ -747,9 +747,17 @@ class CalibrationRun:
             # set states
             self.helper.last_state = True
             self.helper.last_z_offset = offset
-        finally:
-            # execute end gcode
-            self.helper.end_gcode.run_gcode_from_command()
+        except BaseException:
+            # The end gcode still has to dock the probe, but when it fails
+            # here it must not replace the calibration error the user needs
+            # to see. Log it and let the original error propagate.
+            try:
+                self.helper.end_gcode.run_gcode_from_command()
+            except Exception:
+                logging.exception("end_gcode failed")
+            raise
+        # execute end gcode
+        self.helper.end_gcode.run_gcode_from_command()
 
 
 def load_config(config):

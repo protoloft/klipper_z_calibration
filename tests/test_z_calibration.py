@@ -421,6 +421,46 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertFalse(helper.last_state)
         self.assertIsNone(helper.last_z_offset)
 
+    def test_end_gcode_failure_preserves_the_calibration_error(self):
+        # The dock attempt still runs, but the user has to see why the
+        # calibration failed, not why the docking hook did.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(
+            calibration_values(offset_margins='-1,1'), probe)
+        end_template = printer.gcode_macro.templates['end_gcode']
+        end_template.exception = FakeError('dock failed')
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        with self.assertLogs(level='ERROR') as logs:
+            with self.assertRaisesRegex(FakeError,
+                                        'outside the configured range'):
+                helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertIn('end_gcode failed', '\n'.join(logs.output))
+        self.assertEqual(end_template.calls, 1)
+
+    def test_end_gcode_failure_after_success_still_raises(self):
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(calibration_values(), probe)
+        end_template = printer.gcode_macro.templates['end_gcode']
+        end_template.exception = FakeError('dock failed')
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        with self.assertRaisesRegex(FakeError, 'dock failed'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        # The result was applied before the end gcode failed.
+        self.assertTrue(helper.last_state)
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+
     def test_error_gcode_rawparams_contains_error_message(self):
         helper, printer = make_helper({
             'error_gcode': 'RESPOND MSG={rawparams}',
