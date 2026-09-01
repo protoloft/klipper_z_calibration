@@ -78,11 +78,20 @@ verify_ready()
     fi
 }
 
+service_exists()
+{
+    # Match the unit name exactly: a substring grep would accept an
+    # unrelated unit such as "kalico-klipper.service" for "klipper.service".
+    local unit="$1"
+    sudo systemctl list-units --full --all -t service --no-legend --plain \
+        | awk '{print $1}' | grep -qx "$unit"
+}
+
 # Step 2:  Verify Klipper has been installed
 check_klipper()
 {
     if [[ $NUM_INSTALLS == 0 ]]; then
-        if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper.service")" ]; then
+        if service_exists "klipper.service"; then
             echo "Klipper service found!"
         else
             echo "Klipper service not found, please install Klipper first"
@@ -91,7 +100,7 @@ check_klipper()
     else
         local klip
         for (( klip = 1; klip<=$NUM_INSTALLS; klip++ )); do
-            if [ "$(sudo systemctl list-units --full -all -t service --no-legend | grep -F "klipper-$klip.service")" ]; then
+            if service_exists "klipper-$klip.service"; then
                 echo "klipper-$klip.service found!"
             else
                 echo "klipper-$klip.service NOT found, please ensure you've entered the correct number of klipper instances you're running!"
@@ -195,12 +204,22 @@ add_updater()
         "$SRCDIR")
     if [ "$update_result" = "changed" ]; then
         echo "[OK]"
-
-        echo -n "Restarting Moonraker... "
-        sudo systemctl restart moonraker
-        echo "[OK]"
+        # Multi-instance setups often have no plain "moonraker" unit, and
+        # a failed restart must not abort an otherwise finished install.
+        restart_service moonraker
     else
         echo "[SKIPPED]"
+    fi
+}
+
+restart_service()
+{
+    local unit="$1"
+    echo -n "Restarting ${unit}... "
+    if sudo systemctl restart "$unit"; then
+        echo "[OK]"
+    else
+        echo "[FAILED] - please restart ${unit} manually"
     fi
 }
 
@@ -208,15 +227,11 @@ add_updater()
 restart_klipper()
 {
     if [[ $NUM_INSTALLS == 0 ]]; then
-        echo -n "Restarting Klipper... "
-        sudo systemctl restart klipper
-        echo "[OK]"
+        restart_service klipper
     else
         local klip
         for (( klip = 1; klip<=$NUM_INSTALLS; klip++)); do
-            echo -n "Restarting Klipper-$klip... "
-            sudo systemctl restart klipper-$klip
-            echo "[OK]"
+            restart_service "klipper-$klip"
         done
     fi
 }
@@ -247,15 +262,36 @@ uinstall()
     fi
     echo -n "z_calibration.py not found, nothing to uninstall. "
     echo "[SKIPPED]"
+    warn_foreign_leftovers
     # Not an error: rerunning -u has to stay idempotent. The caller uses the
     # status only to decide whether Klipper has to be restarted.
     return 1
 }
 
+warn_foreign_leftovers()
+{
+    # A link created from a moved or renamed checkout does not resolve to
+    # this checkout any more, so uninstall leaves it alone by design. Say
+    # so instead of reporting a clean tree while a stale plugin file keeps
+    # loading into Klipper.
+    local file_path
+    for file_path in "$KALICO_PLUGIN_FILE" "$KALICO_COMPAT_FILE" \
+                     "$KLIPPER_EXTRA_FILE" "$KLIPPER_COMPAT_FILE"; do
+        if [ -e "$file_path" ] || [ -L "$file_path" ]; then
+            echo "Warning: $file_path exists but is not owned by this checkout - remove it manually if it is stale."
+        fi
+    done
+}
+
+print_usage()
+{
+    echo "Usage: $(basename "$0") [-k <Klipper path>] [-m <Moonraker config file>] [-n <number klipper instances>] [-u] [-h]"
+}
+
 usage()
 {
-    echo "Usage: $(basename $0) [-k <Klipper path>] [-m <Moonraker config file>] [-n <number klipper instances>] [-u]" 1>&2;
-    exit 1;
+    print_usage 1>&2
+    exit 1
 }
 
 # Command parsing
@@ -265,6 +301,7 @@ main()
     UNINSTALL=""
     MOONRAKER_CONFIG_CUSTOM=0
     MOONRAKER_AVAILABLE=1
+    NUM_INSTALLS=0
     NUM_INSTALLS_CUSTOM=0
     local OPTION
     while getopts ":k:m:n:uh" OPTION; do
@@ -275,20 +312,25 @@ main()
             n) NUM_INSTALLS="$OPTARG"
                NUM_INSTALLS_CUSTOM=1 ;;
             u) UNINSTALL=1 ;;
-            h | ?) usage ;;
+            h) print_usage
+               exit 0 ;;
+            ?) usage ;;
         esac
     done
 
     set_install_paths
     verify_ready
-    check_klipper
     if [ -z "$UNINSTALL" ]; then
+        check_klipper
         check_requirements
         link_extension
         if [ "$MOONRAKER_AVAILABLE" -eq 1 ]; then
             add_updater
         fi
     else
+        # Uninstall cleans up symlinks; it must work without a reachable
+        # Klipper service, so the service check is skipped here and the
+        # restart below tolerates a missing unit.
         check_klipper_path
         # Nothing removed means nothing changed for Klipper, so there is no
         # reason to restart it. The "if" also keeps "set -e" from ending the

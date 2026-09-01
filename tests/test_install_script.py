@@ -104,7 +104,7 @@ class InstallScriptTest(unittest.TestCase):
     def test_uninstall_main_does_not_require_moonraker_config(self):
         result = run_bash(
             "verify_ready(){ echo verify; }\n"
-            "check_klipper(){ echo check_klipper; }\n"
+            "check_klipper(){ echo bad_service_check; }\n"
             "check_klipper_path(){ echo check_path; }\n"
             "check_requirements(){ echo bad_requirements; return 42; }\n"
             "uinstall(){ echo uninstall; }\n"
@@ -112,7 +112,56 @@ class InstallScriptTest(unittest.TestCase):
             "main -u\n")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn('bad_requirements', result.stdout)
+        # Uninstall has to work without a reachable Klipper service.
+        self.assertNotIn('bad_service_check', result.stdout)
         self.assertIn('uninstall', result.stdout)
+
+    def test_help_option_exits_successfully(self):
+        result = run_bash("main -h\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Usage:", result.stdout)
+
+    def test_unknown_option_fails_with_usage(self):
+        result = run_bash("main -x\n")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Usage:", result.stderr)
+
+    def test_failed_service_restart_does_not_abort(self):
+        # Multi-instance setups often have no plain "moonraker" unit; a
+        # failed restart must not kill the install through "set -e".
+        result = run_bash(
+            "sudo(){ return 1; }\n"
+            "restart_service moonraker\n"
+            "echo continued\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("please restart moonraker manually", result.stdout)
+        self.assertIn("continued", result.stdout)
+
+    def test_service_check_matches_the_unit_name_exactly(self):
+        # A substring grep would accept "kalico-klipper.service" here.
+        result = run_bash(
+            "sudo(){ printf 'kalico-klipper.service loaded active"
+            " running x\\n'; }\n"
+            "if service_exists klipper.service; then echo found;"
+            " else echo missing; fi\n"
+            "sudo(){ printf 'klipper.service loaded active running"
+            " x\\n'; }\n"
+            "if service_exists klipper.service; then echo found2; fi\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("missing", result.stdout)
+        self.assertIn("found2", result.stdout)
+
+    def test_main_resets_num_installs_between_invocations(self):
+        result = run_bash(
+            "check_klipper(){ :; }\n"
+            "check_requirements(){ MOONRAKER_AVAILABLE=0; }\n"
+            "link_extension(){ :; }\n"
+            "restart_klipper(){ :; }\n"
+            "main -n 2\n"
+            "main\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Number of Installs Selected: 2", result.stdout)
+        self.assertIn("Defaulted to one klipper install", result.stdout)
 
     def test_uninstall_without_links_does_not_restart_klipper(self):
         # Nothing was removed, so nothing changed for Klipper. Rerunning -u
@@ -264,6 +313,24 @@ class InstallScriptTest(unittest.TestCase):
                    q(ROOT / 'z_calibration.py')))
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("foreign", result.stdout)
+
+    def test_uninstall_warns_about_foreign_leftovers(self):
+        # The no-delete policy leaves a link from a moved checkout alone,
+        # but the user has to hear about it instead of a clean report.
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink('/somewhere/else/z_calibration.py',
+                       extras / 'z_calibration.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "if uinstall; then echo removed; else echo skipped; fi\n"
+                % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("nothing to uninstall", result.stdout)
+            self.assertIn("not owned by this checkout", result.stdout)
+            self.assertIn("skipped", result.stdout)
 
     def test_default_moonraker_config_falls_back_to_old_path(self):
         with tempfile.TemporaryDirectory() as tempdir:
