@@ -360,6 +360,19 @@ class HomingCompatZEndstopTest(unittest.TestCase):
         self.assertIs(self.get_z_endstop(printer).mcu_endstop,
                       carriage_endstop)
 
+    def test_first_named_z_endstop_is_used(self):
+        # 'stepper_z' is what current Klipper registers for the primary
+        # endstop, 'z' what an extra carriage of the same axis can register
+        # next to it. The primary one comes first and is the one to probe.
+        printer = FakePrinter()
+        primary = FakeMCUEndstop()
+        extra = FakeMCUEndstop()
+        printer.query_endstops.endstops = [
+            (primary, 'stepper_z'),
+            (extra, 'z'),
+        ]
+        self.assertIs(self.get_z_endstop(printer).mcu_endstop, primary)
+
     def test_first_carriage_endstop_is_used(self):
         printer = FakePrinter()
         endstop = FakeMCUEndstop()

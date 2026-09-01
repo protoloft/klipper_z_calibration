@@ -394,11 +394,15 @@ class HomingCompat:
 
     def _find_named_z_endstop(self, query_endstops):
         """Return the endstop registered under a Z stepper name."""
-        found = None
+        # The first match is the primary endstop. A rail registers its own
+        # in PrinterRail.__init__, before any extra stepper or extra
+        # carriage can append one, so registration order is definition
+        # order. This is the same rule _find_carriage_z_endstop() applies
+        # by taking index 0 of the rail's endstop list.
         for endstop, name in query_endstops.endstops:
             if name in _Z_ENDSTOP_NAMES:
-                found = endstop
-        return found
+                return endstop
+        return None
 
     def _find_carriage_z_endstop(self):
         """Return the Z endstop of a kinematic carriage, if there is one."""
