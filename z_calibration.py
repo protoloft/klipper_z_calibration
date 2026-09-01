@@ -628,9 +628,11 @@ class CalibrationRun:
 
     def calibrate_z(self, switch_offset, nozzle_site, switch_site, bed_site):
         """Run the complete calibration sequence and store the result."""
-        # execute start gcode
-        self.helper.start_gcode.run_gcode_from_command()
         try:
+            # Execute start gcode. This is inside the try so that a start
+            # gcode failing halfway - an attach macro that moved but did not
+            # finish - still reaches the end gcode below and docks again.
+            self.helper.start_gcode.run_gcode_from_command()
             # probe the nozzle
             nozzle_zero = self._probe_on_site(self.z_endstop,
                                               nozzle_site,

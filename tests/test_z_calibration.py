@@ -349,6 +349,30 @@ class ZCalibrationTest(unittest.TestCase):
             'error_gcode',
         ])
 
+    def test_end_gcode_runs_when_start_gcode_fails(self):
+        # An attach macro can move the toolhead and then abort. Docking is
+        # the recovery for that, so end_gcode has to run - the same reason
+        # v0.9.2 added it for errors later in the run.
+        probe = FakeProbe(offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper({
+            'switch_offset': '0.5',
+            'nozzle_xy_position': '10,10',
+            'switch_xy_position': '20,20',
+            'bed_xy_position': '30,30',
+            'error_gcode': 'RESPOND MSG={params.ERROR}',
+        }, probe)
+        start_template = printer.gcode_macro.templates['start_gcode']
+        start_template.exception = FakeError("attach failed")
+        with self.assertRaisesRegex(FakeError, 'attach failed'):
+            helper.cmd_CALIBRATE_Z(FakeGcmd())
+        self.assertEqual(printer.gcode_macro.executions, [
+            'start_gcode',
+            'end_gcode',
+            'error_gcode',
+        ])
+        self.assertFalse(helper.last_state)
+        self.assertIsNone(helper.last_z_offset)
+
     def test_error_gcode_rawparams_contains_error_message(self):
         helper, printer = make_helper({
             'error_gcode': 'RESPOND MSG={rawparams}',
