@@ -26,6 +26,18 @@ ALLOWED_ROOT_DIRS = frozenset([
 ])
 ALLOWED_ROOT_NAMES = ALLOWED_ROOT_MODULES | ALLOWED_ROOT_DIRS
 
+# Local tool output that .gitignore and scripts/check_whitespace.py already
+# exclude. It exists only on a developer's machine, never in the repository,
+# so the naming discipline does not fail a local run over it. 'venv' does
+# collide with the stdlib venv module, but klippy never imports that; the
+# klippy module list stays fully guarded because none of these names is on
+# it.
+IGNORED_LOCAL_DIRS = frozenset([
+    'env',
+    'venv',
+    'htmlcov',
+])
+
 # klippy modules that this plugin imports or that Klipper loads while the
 # plugin is active. A repository root entry with one of these names would
 # take over the corresponding klippy import for the whole Klipper process.
@@ -62,7 +74,8 @@ def root_directories():
     return set([entry.name for entry in ROOT.iterdir()
                 if entry.is_dir()
                 and not entry.name.startswith('.')
-                and entry.name != '__pycache__'])
+                and entry.name != '__pycache__'
+                and entry.name not in IGNORED_LOCAL_DIRS])
 
 
 def root_top_level_names():

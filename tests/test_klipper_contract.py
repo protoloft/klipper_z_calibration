@@ -96,7 +96,7 @@ class KlipperContractTest(unittest.TestCase):
             "class PrinterPins:\n"
             "    def parse_pin(self, pin_desc, can_invert=False,\n"
             "                  can_pullup=False):\n"
-            "        if [c for c in '^~!:' if c in pin]:\n"
+            "        if [c for c in '^~!:' if c in pin_desc]:\n"
             "            raise error('Invalid pin description')\n"
             "        return {}\n"
             "    def setup_pin(self, pin_type, pin_desc):\n"
