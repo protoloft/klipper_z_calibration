@@ -16,7 +16,8 @@ if MODULE_PATH not in sys.path:
 
 from klipper_compat import BedMeshCompat, GCodeOffsetCompat, HomingCompat
 from klipper_compat import PinEndstop, PrinterObjectCompat, ProbeCompat
-from klipper_compat import ToolheadCompat, run_gcode_template
+from klipper_compat import ToolchangerCompat, ToolheadCompat
+from klipper_compat import run_gcode_template
 from klipper_compat import validate_runtime_contract
 
 # A safe Z height below this is not enough clearance for the docking moves,
@@ -45,6 +46,7 @@ class ZCalibrationHelper:
         self.bed_mesh_compat = BedMeshCompat()
         self.homing_compat = HomingCompat(self.printer)
         self.toolhead_compat = ToolheadCompat(self.printer)
+        self.toolchanger_compat = ToolchangerCompat(self.objects_compat)
         self.switch_offset = self._getfloat(config, 'switch_offset', None,
                                             above=0.)
         self.offset_margins = self._get_offset_margins(
@@ -267,6 +269,7 @@ class ZCalibrationHelper:
         try:
             self._require_z_homed(gcmd)
             self._require_probing_settings(gcmd)
+            self._warn_active_tool_offsets(gcmd)
             nozzle_site = self._get_nozzle_site(gcmd)
             switch_site = self._get_switch_site(gcmd, nozzle_site)
             bed_site = self._get_bed_site(gcmd)
@@ -285,6 +288,7 @@ class ZCalibrationHelper:
         """Sample the calibration endstop and report repeatability stats."""
         self._require_z_homed(gcmd)
         self._require_probing_settings(gcmd)
+        self._warn_active_tool_offsets(gcmd)
         speed = gcmd.get_float("PROBE_SPEED", self.second_speed, above=0.)
         lift_speed = gcmd.get_float("LIFT_SPEED", self.lift_speed, above=0.)
         sample_count = gcmd.get_int("SAMPLES", self.samples, minval=1)
@@ -501,6 +505,26 @@ class ZCalibrationHelper:
                 " probing_retract_dist and position_min for %s, or home z"
                 " so they can be read from the z rail."
                 % (gcmd.get_command(), self.name))
+
+    def _warn_active_tool_offsets(self, gcmd):
+        """Warn when the active toolchanger tool carries its own offsets."""
+        # Every position is moved with manual_move and every sample is a
+        # toolhead Z, so the positions are toolhead coordinates and the
+        # result is the absolute correction for the nozzle that touched
+        # the switch. klipper-toolchanger adds the per-tool offsets on top
+        # through its move transform: with a tool other than the reference
+        # tool the nozzle is off the sites by the X/Y offsets, and the Z
+        # offset ends up in the applied correction twice.
+        offsets = self.toolchanger_compat.get_active_tool_offsets()
+        if offsets is None or not any(offsets):
+            return
+        gcmd.respond_info("%s: WARNING: the active tool has gcode offsets"
+                          " X=%.3f Y=%.3f Z=%.3f. The positions are toolhead"
+                          " coordinates and the toolchanger adds these"
+                          " offsets on top of the result, so run %s with"
+                          " the reference tool whose offsets are zero."
+                          % (gcmd.get_command(), offsets[0], offsets[1],
+                             offsets[2], gcmd.get_command()))
 
     def move(self, coord, speed):
         """Move through Klipper's toolhead wrapper."""

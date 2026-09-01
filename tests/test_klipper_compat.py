@@ -14,7 +14,8 @@ from fakes import FakeForeignEndstopRail, FakeGenericCartesianKinematics
 from fakes import FakeInactiveRail, FakeKinematics
 from fakes import FakeLegacyProbe, FakeMCUEndstop
 from fakes import FakeOldDefaultsProbe, FakePrinter, FakeProbe, FakeRail
-from fakes import FakeRecordingMCUEndstop, FakeTemplate
+from fakes import FakeRecordingMCUEndstop, FakeTemplate, FakeTool
+from fakes import FakeToolchanger
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -83,6 +84,47 @@ class PrinterObjectCompatTest(unittest.TestCase):
         self.assertIsNone(compat.lookup_optional_toolhead())
         self.assertIsNone(compat.lookup_safe_z_home())
         self.assertIsNone(compat.lookup_bed_mesh())
+        self.assertIsNone(compat.lookup_toolchanger())
+
+    def test_toolchanger_offsets_are_none_without_a_toolchanger(self):
+        printer = FakePrinter()
+        compat = klipper_compat.ToolchangerCompat(
+            klipper_compat.PrinterObjectCompat(printer))
+        self.assertIsNone(compat.get_active_tool_offsets())
+
+    def test_toolchanger_offsets_are_none_without_an_active_tool(self):
+        printer = FakePrinter()
+        printer.objects['toolchanger'] = FakeToolchanger(None)
+        compat = klipper_compat.ToolchangerCompat(
+            klipper_compat.PrinterObjectCompat(printer))
+        self.assertIsNone(compat.get_active_tool_offsets())
+
+    def test_toolchanger_offsets_come_from_the_active_tool(self):
+        printer = FakePrinter()
+        printer.objects['toolchanger'] = FakeToolchanger(
+            FakeTool(1.5, -2.0, 0.25))
+        compat = klipper_compat.ToolchangerCompat(
+            klipper_compat.PrinterObjectCompat(printer))
+        self.assertEqual(compat.get_active_tool_offsets(), [1.5, -2.0, 0.25])
+
+    def test_toolchanger_offsets_treat_unconfigured_values_as_zero(self):
+        # klipper-toolchanger leaves an offset None when the option is not
+        # configured, and its get_status() reports that as 0.0 as well.
+        printer = FakePrinter()
+        printer.objects['toolchanger'] = FakeToolchanger(
+            FakeTool(None, None, 0.25))
+        compat = klipper_compat.ToolchangerCompat(
+            klipper_compat.PrinterObjectCompat(printer))
+        self.assertEqual(compat.get_active_tool_offsets(), [0.0, 0.0, 0.25])
+
+    def test_toolchanger_offsets_are_none_for_unreadable_values(self):
+        # A warning helper must never break the command it decorates.
+        printer = FakePrinter()
+        printer.objects['toolchanger'] = FakeToolchanger(
+            FakeTool('broken', 0.0, 0.0))
+        compat = klipper_compat.ToolchangerCompat(
+            klipper_compat.PrinterObjectCompat(printer))
+        self.assertIsNone(compat.get_active_tool_offsets())
 
     def test_lookup_optional_toolhead_returns_the_toolhead(self):
         printer = FakePrinter()

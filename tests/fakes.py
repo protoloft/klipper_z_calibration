@@ -682,6 +682,22 @@ class FakeCarriage:
         return self.rail
 
 
+class FakeTool:
+    """klipper-toolchanger tool carrying its per-tool G-code offsets."""
+
+    def __init__(self, x=0.0, y=0.0, z=0.0):
+        self.gcode_x_offset = x
+        self.gcode_y_offset = y
+        self.gcode_z_offset = z
+
+
+class FakeToolchanger:
+    """klipper-toolchanger object exposing the active tool."""
+
+    def __init__(self, active_tool=None):
+        self.active_tool = active_tool
+
+
 class FakeKinematics:
     """Classic kinematics exposing rails instead of carriages."""
 

@@ -16,7 +16,8 @@ from fakes import FakeKinematics
 from fakes import FakeInactiveRail, FakeInactiveStepper, FakeLegacyProbe
 from fakes import FakeMCUEndstop, FakeOldProbe, FakePrinter, FakeProbe
 from fakes import FakeProbeSession, FakeProbeWithProbeSession, FakeRail
-from fakes import FakeStepper, FakeStepperlessMCUEndstop, ProbeResult
+from fakes import FakeStepper, FakeStepperlessMCUEndstop, FakeTool
+from fakes import FakeToolchanger, ProbeResult
 
 
 sys.modules['mcu'] = types.SimpleNamespace(MCU_endstop=FakeMCUEndstop)
@@ -878,6 +879,20 @@ class ZCalibrationTest(unittest.TestCase):
                           ([5.5, 5.5, None], 20.0),
                           ([5.0, 6.0, None], 20.0)])
 
+    def test_probe_z_accuracy_warns_when_the_active_tool_has_offsets(self):
+        # The nozzle site is a toolhead coordinate, so another tool's
+        # nozzle misses the switch by its X/Y offsets.
+        helper, printer = make_helper({'nozzle_xy_position': '1,2'})
+        printer.objects['toolchanger'] = FakeToolchanger(
+            FakeTool(0.5, -0.25, 0.0))
+        printer.homing.results = [[1.0, 2.0, 0.1]]
+        gcmd = FakeGcmd('PROBE_Z_ACCURACY')
+        helper.cmd_PROBE_Z_ACCURACY(gcmd)
+        self.assertIn('PROBE_Z_ACCURACY: WARNING: the active tool has gcode'
+                      ' offsets X=0.500 Y=-0.250 Z=0.000', gcmd.responses[0])
+        self.assertIn('run PROBE_Z_ACCURACY with the reference tool',
+                      gcmd.responses[0])
+
     def test_probe_z_accuracy_reports_statistics(self):
         helper, printer = make_helper({
             'nozzle_xy_position': '1,2',
@@ -961,6 +976,54 @@ class ZCalibrationTest(unittest.TestCase):
             printer.gcode_move.offset_commands[1]['Z_ADJUST'], 3.5)
         self.assertEqual(session.run_gcmds[0].params['PROBE_SPEED'], '2.0')
         self.assertTrue(session.ended)
+
+    def test_calibration_warns_when_the_active_tool_has_offsets(self):
+        # The positions are toolhead coordinates and the result is the
+        # absolute correction for the nozzle that touched the switch.
+        # klipper-toolchanger adds the tool offsets on top again, so with
+        # a tool other than the reference tool the Z delta counts twice.
+        session = FakeProbeSession([
+            ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+        ])
+        probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+        helper, printer = make_helper(calibration_values(), probe)
+        printer.objects['toolchanger'] = FakeToolchanger(
+            FakeTool(0.0, 0.0, 0.3))
+        printer.homing.results = [
+            [10.0, 10.0, 1.0],
+            [20.0, 20.0, 2.0],
+        ]
+        gcmd = FakeGcmd()
+        helper.cmd_CALIBRATE_Z(gcmd)
+        warnings = [r for r in gcmd.responses if 'WARNING' in r]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('CALIBRATE_Z: WARNING: the active tool has gcode'
+                      ' offsets X=0.000 Y=0.000 Z=0.300', warnings[0])
+        self.assertIn('run CALIBRATE_Z with the reference tool',
+                      warnings[0])
+        # It is a warning only: the calibration still runs and applies.
+        self.assertAlmostEqual(helper.last_z_offset, 3.5)
+        self.assertAlmostEqual(
+            printer.gcode_move.offset_commands[1]['Z_ADJUST'], 3.5)
+
+    def test_calibration_does_not_warn_for_the_reference_tool(self):
+        for toolchanger in [FakeToolchanger(FakeTool()),
+                            FakeToolchanger(None)]:
+            with self.subTest(active_tool=toolchanger.active_tool):
+                session = FakeProbeSession([
+                    ProbeResult(30.0, 30.0, 123.0, 29.0, 28.0, 5.0),
+                ])
+                probe = FakeProbe(session=session, offsets=(1.0, 2.0, 1.5))
+                helper, printer = make_helper(calibration_values(), probe)
+                printer.objects['toolchanger'] = toolchanger
+                printer.homing.results = [
+                    [10.0, 10.0, 1.0],
+                    [20.0, 20.0, 2.0],
+                ]
+                gcmd = FakeGcmd()
+                helper.cmd_CALIBRATE_Z(gcmd)
+                self.assertFalse(
+                    [r for r in gcmd.responses if 'WARNING' in r])
 
     def test_calibration_runs_offset_gcode_when_configured(self):
         session = FakeProbeSession([

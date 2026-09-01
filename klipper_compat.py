@@ -103,6 +103,10 @@ class PrinterObjectCompat:
         """Return bed_mesh when present."""
         return self.printer.lookup_object('bed_mesh', default=None)
 
+    def lookup_toolchanger(self):
+        """Return the klipper-toolchanger object when present."""
+        return self.printer.lookup_object('toolchanger', default=None)
+
     def load_gcode_macro(self, config):
         """Load Klipper's gcode_macro helper object."""
         return self.printer.load_object(config, 'gcode_macro')
@@ -542,6 +546,36 @@ class ToolheadCompat:
         homed_axes = self._toolhead().get_status(eventtime).get(
             'homed_axes', '')
         return axis in homed_axes
+
+
+class ToolchangerCompat:
+    """Isolates the klipper-toolchanger active tool and offset attributes."""
+
+    def __init__(self, objects_compat):
+        self.objects_compat = objects_compat
+
+    def get_active_tool_offsets(self):
+        """Return the active tool's G-code X/Y/Z offsets, or None.
+
+        None means there is no toolchanger, no tool is selected, or the
+        offsets cannot be read. klipper-toolchanger keeps them on the
+        Tool object as gcode_x_offset, gcode_y_offset, and
+        gcode_z_offset; an option that is not configured stays None.
+        """
+        toolchanger = self.objects_compat.lookup_toolchanger()
+        if toolchanger is None:
+            return None
+        tool = getattr(toolchanger, 'active_tool', None)
+        if tool is None:
+            return None
+        offsets = []
+        for axis in 'xyz':
+            value = getattr(tool, 'gcode_%s_offset' % (axis,), None)
+            try:
+                offsets.append(float(value or 0.))
+            except (TypeError, ValueError):
+                return None
+        return offsets
 
 
 class BedMeshCompat:
