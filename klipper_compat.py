@@ -305,8 +305,12 @@ class HomingCompat:
         self.printer = printer
         self.objects = PrinterObjectCompat(printer)
 
-    def get_z_endstop(self, query_endstops, section_name):
-        """Find and wrap the physical Z calibration endstop."""
+    def find_z_homing_endstop(self, query_endstops, section_name):
+        """Find the endstop that homes the Z axis, virtual or physical."""
+        # This is the rail anchor, not necessarily a probing target. With
+        # 'probe:z_virtual_endstop' the Z rail registers the probe's helper
+        # object itself, so the lookup returns that helper and the caller
+        # can still identify the Z rail by object identity.
         endstop = self._find_carriage_z_endstop()
         if endstop is None:
             endstop = self._find_named_z_endstop(query_endstops)
@@ -314,6 +318,11 @@ class HomingCompat:
             raise self.printer.config_error(
                 "No z-endstop found for %s (registered endstops: %s)"
                 % (section_name, self._endstop_names(query_endstops)))
+        return endstop
+
+    def get_z_endstop(self, query_endstops, section_name):
+        """Find and wrap the physical Z calibration endstop."""
+        endstop = self.find_z_homing_endstop(query_endstops, section_name)
         if not isinstance(endstop, MCU_endstop):
             raise self.printer.config_error(
                 "A virtual endstop for z is not supported for %s"
@@ -371,9 +380,9 @@ class HomingCompat:
         names = [name for _endstop, name in query_endstops.endstops]
         return ', '.join(names) or 'none'
 
-    def get_z_rail_settings(self, rail, z_endstop):
+    def get_z_rail_settings(self, rail, homing_endstop):
         """Extract Z rail homing settings from a Klipper rail object."""
-        if not self._is_z_rail(rail, z_endstop):
+        if not self._is_z_rail(rail, homing_endstop):
             return None
         return {
             'position_endstop': rail.position_endstop,
@@ -383,28 +392,27 @@ class HomingCompat:
             'position_min': rail.position_min,
         }
 
-    def _is_z_rail(self, rail, z_endstop):
-        """Return whether a homed rail carries the calibration endstop."""
-        # The rail that registered the calibration endstop is the Z rail,
-        # and its homing settings are the ones used to drive into that
-        # endstop. Asking the steppers is ambiguous instead: corexz and
-        # hybrid_corexz steppers report AF_X | AF_Z, delta steppers report
-        # all three axes, and a generic_cartesian stepper that references an
-        # X and a Z carriage does the same. The X rail would then answer for
-        # Z and, because the settings latch on first use, keep the X homing
-        # speed and X position_min for every probing move.
-        mcu_endstop = getattr(z_endstop, 'mcu_endstop', None)
+    def _is_z_rail(self, rail, homing_endstop):
+        """Return whether a homed rail carries the Z homing endstop."""
+        # The rail that registered the endstop homing Z is the Z rail, and
+        # its homing settings are the ones used to drive into an endstop
+        # next to the bed. Asking the steppers is ambiguous instead: corexz
+        # and hybrid_corexz steppers report AF_X | AF_Z, delta steppers
+        # report all three axes, and a generic_cartesian stepper that
+        # references an X and a Z carriage does the same. The X rail would
+        # then answer for Z and, because the settings latch on first use,
+        # keep the X homing speed and X position_min for every probing move.
         get_endstops = getattr(rail, 'get_endstops', None)
-        if mcu_endstop is not None and get_endstops is not None:
+        if homing_endstop is not None and get_endstops is not None:
             # An empty list means this rail registered no endstop, not that
             # its shape is unknown, so it is not the Z rail and must not
             # reach the axis test below. Every supported rail class demands
             # an endstop_pin, so the case does not occur in practice.
-            return any(endstop is mcu_endstop
+            return any(endstop is homing_endstop
                        for endstop, _name in get_endstops())
         # Only a rail without an endstop list, or a caller that has no
-        # calibration endstop yet, leaves nothing to compare. Then the
-        # previous axis test decides, with the ambiguity described above.
+        # homing endstop yet, leaves nothing to compare. Then the previous
+        # axis test decides, with the ambiguity described above.
         return rail.get_steppers()[0].is_active_axis('z')
 
     def probing_move(self, mcu_endstop, pos, speed):

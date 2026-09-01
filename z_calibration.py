@@ -30,6 +30,7 @@ class ZCalibrationHelper:
     def __init__(self, config):
         self.state = None
         self.z_endstop = None
+        self.z_homing_endstop = None
         self.z_homing = None
         self.last_state = False
         self.last_z_offset = None
@@ -162,6 +163,8 @@ class ZCalibrationHelper:
         """Resolve required printer objects once Klipper is connected."""
         self.z_endstop = self.homing_compat.get_z_endstop(
             self.query_endstops, self.name)
+        self.z_homing_endstop = self.homing_compat.find_z_homing_endstop(
+            self.query_endstops, self.name)
         # get probing settings
         probe = self.objects_compat.lookup_optional_probe()
         if probe is None:
@@ -192,10 +195,10 @@ class ZCalibrationHelper:
 
     def handle_home_rails_end(self, homing_state, rails):
         """Cache Z rail homing settings after Klipper homes rails."""
-        # get z homing position from the rail of the calibration endstop
+        # get z homing position from the rail that homes z
         for rail in rails:
-            settings = self.homing_compat.get_z_rail_settings(rail,
-                                                              self.z_endstop)
+            settings = self.homing_compat.get_z_rail_settings(
+                rail, self.z_homing_endstop)
             if settings is None:
                 continue
             # get homing settings from z rail

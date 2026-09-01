@@ -452,6 +452,38 @@ class HomingCompatZEndstopTest(unittest.TestCase):
         with self.assertRaisesRegex(FakeError, 'registered endstops: none'):
             self.get_z_endstop(printer)
 
+    def find_z_homing_endstop(self, printer):
+        """Run the homing endstop lookup the way handle_connect() does."""
+        compat = klipper_compat.HomingCompat(printer)
+        return compat.find_z_homing_endstop(printer.query_endstops,
+                                            'z_calibration')
+
+    def test_homing_endstop_lookup_returns_a_virtual_endstop(self):
+        # The rail of a 'probe:z_virtual_endstop' setup registers the
+        # probe's helper object. It cannot be probed, but it is what makes
+        # the Z rail identifiable, so this lookup must not reject it.
+        printer = FakePrinter()
+        virtual = object()
+        self.setup_carriages(printer, [(virtual, 'carriage z')])
+        self.assertIs(self.find_z_homing_endstop(printer), virtual)
+        with self.assertRaisesRegex(FakeError, 'virtual endstop'):
+            self.get_z_endstop(printer)
+
+    def test_homing_endstop_lookup_finds_a_named_endstop(self):
+        printer = FakePrinter()
+        endstop = FakeMCUEndstop()
+        printer.query_endstops.endstops = [(endstop, 'stepper_z')]
+        self.assertIs(self.find_z_homing_endstop(printer), endstop)
+
+    def test_homing_endstop_lookup_reports_the_registered_names(self):
+        printer = FakePrinter()
+        printer.query_endstops.endstops = [(FakeMCUEndstop(), 'carriage x')]
+        with self.assertRaisesRegex(
+                FakeError,
+                r'No z-endstop found for z_calibration'
+                r' \(registered endstops: carriage x\)'):
+            self.find_z_homing_endstop(printer)
+
 
 class HomingCompatRailSettingsTest(unittest.TestCase):
     """Covers Z rail settings read during the home_rails_end event."""
@@ -466,15 +498,17 @@ class HomingCompatRailSettingsTest(unittest.TestCase):
 
     def setUp(self):
         self.compat = klipper_compat.HomingCompat(FakePrinter())
+        # The rail is matched against the raw endstop that homes Z, not
+        # against the wrapped calibration endstop. Both are the same object
+        # unless the plugin owns its own endstop on a configured pin.
         self.endstop = FakeMCUEndstop()
-        self.z_endstop = klipper_compat.EndstopWrapper(self.endstop)
 
-    def test_rail_of_the_calibration_endstop_is_used(self):
+    def test_rail_of_the_homing_endstop_is_used(self):
         # generic_cartesian homes carriage rails, so the same settings the
         # classic Z rail provides have to be readable from them.
         rail = FakeEndstopRail([(self.endstop, 'carriage z')])
         self.assertEqual(self.compat.get_z_rail_settings(rail,
-                                                         self.z_endstop),
+                                                         self.endstop),
                          self.Z_SETTINGS)
 
     def test_additional_rail_endstops_do_not_hide_the_rail(self):
@@ -483,7 +517,7 @@ class HomingCompatRailSettingsTest(unittest.TestCase):
         rail = FakeEndstopRail([(FakeMCUEndstop(), 'stepper_z'),
                                 (self.endstop, 'z1')])
         self.assertEqual(self.compat.get_z_rail_settings(rail,
-                                                         self.z_endstop),
+                                                         self.endstop),
                          self.Z_SETTINGS)
 
     def test_rail_with_a_foreign_endstop_is_ignored(self):
@@ -492,19 +526,19 @@ class HomingCompatRailSettingsTest(unittest.TestCase):
         rail = FakeForeignEndstopRail()
         self.assertTrue(rail.get_steppers()[0].is_active_axis('z'))
         self.assertIsNone(self.compat.get_z_rail_settings(rail,
-                                                          self.z_endstop))
+                                                          self.endstop))
 
     def test_rail_without_endstops_falls_back_to_the_axis_test(self):
         self.assertEqual(
-            self.compat.get_z_rail_settings(FakeRail(), self.z_endstop),
+            self.compat.get_z_rail_settings(FakeRail(), self.endstop),
             self.Z_SETTINGS)
         self.assertIsNone(
             self.compat.get_z_rail_settings(FakeInactiveRail(),
-                                            self.z_endstop))
+                                            self.endstop))
 
-    def test_without_a_calibration_endstop_the_axis_test_decides(self):
+    def test_without_a_homing_endstop_the_axis_test_decides(self):
         # The endstop is a required argument, so this is only reachable
-        # before the calibration endstop is resolved at startup.
+        # before the homing endstop is resolved at startup.
         self.assertIsNotNone(
             self.compat.get_z_rail_settings(FakeForeignEndstopRail(), None))
         self.assertIsNone(

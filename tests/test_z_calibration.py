@@ -263,7 +263,17 @@ class ZCalibrationTest(unittest.TestCase):
         helper.handle_connect()
         self.assertIs(helper.z_endstop.mcu_endstop, endstop)
 
-    def test_handle_home_rails_end_reads_the_calibration_endstop_rail(self):
+    def test_handle_connect_resolves_both_endstop_roles(self):
+        # The calibration endstop is wrapped for probing_move(); the homing
+        # endstop stays raw because the rail lookup compares it by identity
+        # against the objects the rail registered.
+        printer = FakePrinter()
+        helper = make_connected_helper(printer)
+        raw_endstop = printer.query_endstops.endstops[0][0]
+        self.assertIs(helper.z_homing_endstop, raw_endstop)
+        self.assertIs(helper.z_endstop.mcu_endstop, raw_endstop)
+
+    def test_handle_home_rails_end_reads_the_homing_endstop_rail(self):
         printer = FakePrinter()
         helper = make_connected_helper(printer)
         helper.handle_home_rails_end(None, [z_rail(printer)])
