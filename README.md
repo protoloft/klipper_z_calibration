@@ -48,6 +48,12 @@ The full user documentation remains in the
 only the quick project overview, installation entry point, and compatibility
 summary.
 
+Release notes are published on the
+[GitHub Releases](https://github.com/protoloft/klipper_z_calibration/releases)
+page; the Wiki
+[Changelog](https://github.com/protoloft/klipper_z_calibration/wiki/Changelog)
+keeps the version history.
+
 ## Supported Setup
 
 Supported:
@@ -59,6 +65,8 @@ Supported:
 - Z homing through `probe:z_virtual_endstop`, with the calibration switch
   configured as `endstop_pin` in `[z_calibration]`
 - Dockable contact probes such as Klicky-style probes
+- Toolchanger setups, calibrated with the reference tool whose gcode offsets
+  are zero
 - Moonraker Update Manager installs
 
 Not supported:
@@ -98,6 +106,27 @@ The installer links only `z_calibration.py` into Klipper or Kalico. Supporting
 Python modules are loaded from this repository checkout through the symlink
 target, so the checkout must remain in place.
 
+## Upgrading From 1.x
+
+Version 2.0.0 removes the options that 1.x only reported as deprecated.
+Klipper refuses to start with them in `printer.cfg`, so rename them before
+updating:
+
+| Removed in 2.0.0 | Replacement      |
+| ---------------- | ---------------- |
+| `max_deviation`  | `offset_margins` |
+| `clearance`      | `safe_z_height`  |
+
+The Wiki documents both replacements. Running `install.sh` again is not
+required after the update: 2.0.0 links the same `z_calibration.py` into
+Klipper as 1.x did, and the supporting modules are loaded from the checkout.
+Rerun it only to migrate the Moonraker updater section to `channel: stable`,
+see [Moonraker Updates](#moonraker-updates).
+
+Toolchanger users must run `CALIBRATE_Z` with the reference tool whose gcode
+offsets are zero. With another tool active, the toolchanger adds its offsets
+on top of the result, and 2.0.0 warns about that.
+
 ## Moonraker Updates
 
 The installer manages the `[update_manager z_calibration]` section in
@@ -131,14 +160,15 @@ https://github.com/protoloft/klipper_z_calibration/wiki
 **The smaller the configured `switch_offset`, the farther the nozzle is from the
 bed.**
 
-Current releases expect the modern option names:
+Since 2.0.0 the plugin expects these option names:
 
 - `offset_margins`
 - `safe_z_height`
 - `offset_gcode`
 - `error_gcode`
 
-The older `max_deviation` and `clearance` options are no longer supported.
+The 1.x options `max_deviation` and `clearance` are no longer supported, see
+[Upgrading From 1.x](#upgrading-from-1x).
 
 `offset_gcode` is an optional hook for toolchanger systems that need to apply
 the calculated Z adjustment through custom G-Code.
