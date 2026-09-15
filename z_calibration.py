@@ -518,13 +518,22 @@ class ZCalibrationHelper:
         offsets = self.toolchanger_compat.get_active_tool_offsets()
         if offsets is None or not any(offsets):
             return
+        effects = []
+        if offsets[0] or offsets[1]:
+            effects.append("this nozzle is off the configured positions"
+                           " by X=%.3f Y=%.3f" % (offsets[0], offsets[1]))
+        if offsets[2]:
+            effects.append("the result already contains this nozzle's Z"
+                           " difference and the toolchanger adds Z=%.3f"
+                           " again on every move, so it is applied twice"
+                           % (offsets[2],))
         gcmd.respond_info("%s: WARNING: the active tool has gcode offsets"
                           " X=%.3f Y=%.3f Z=%.3f. The positions are toolhead"
-                          " coordinates and the toolchanger adds these"
-                          " offsets on top of the result, so run %s with"
-                          " the reference tool whose offsets are zero."
+                          " coordinates: %s. Run %s with the reference tool"
+                          " whose offsets are zero."
                           % (gcmd.get_command(), offsets[0], offsets[1],
-                             offsets[2], gcmd.get_command()))
+                             offsets[2], "; ".join(effects),
+                             gcmd.get_command()))
 
     def move(self, coord, speed):
         """Move through Klipper's toolhead wrapper."""

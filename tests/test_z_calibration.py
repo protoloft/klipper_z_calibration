@@ -907,7 +907,10 @@ class ZCalibrationTest(unittest.TestCase):
         helper.cmd_PROBE_Z_ACCURACY(gcmd)
         self.assertIn('PROBE_Z_ACCURACY: WARNING: the active tool has gcode'
                       ' offsets X=0.500 Y=-0.250 Z=0.000', gcmd.responses[0])
-        self.assertIn('run PROBE_Z_ACCURACY with the reference tool',
+        self.assertIn('this nozzle is off the configured positions by'
+                      ' X=0.500 Y=-0.250', gcmd.responses[0])
+        self.assertNotIn('applied twice', gcmd.responses[0])
+        self.assertIn('Run PROBE_Z_ACCURACY with the reference tool',
                       gcmd.responses[0])
 
     def test_probe_z_accuracy_reports_statistics(self):
@@ -1016,7 +1019,13 @@ class ZCalibrationTest(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn('CALIBRATE_Z: WARNING: the active tool has gcode'
                       ' offsets X=0.000 Y=0.000 Z=0.300', warnings[0])
-        self.assertIn('run CALIBRATE_Z with the reference tool',
+        # A tester saw the doubled Z and had to work out why, so the
+        # warning names the effect: the result carries this nozzle's Z
+        # difference and the toolchanger adds gcode_z_offset on top.
+        self.assertIn('the toolchanger adds Z=0.300 again on every move,'
+                      ' so it is applied twice', warnings[0])
+        self.assertNotIn('off the configured positions', warnings[0])
+        self.assertIn('Run CALIBRATE_Z with the reference tool',
                       warnings[0])
         # It is a warning only: the calibration still runs and applies.
         self.assertAlmostEqual(helper.last_z_offset, 3.5)
