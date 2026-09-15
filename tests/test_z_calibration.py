@@ -181,8 +181,11 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
         gcmd = FakeGcmd()
         run = z_calibration.CalibrationRun(helper, gcmd)
         run._suggest_endstop_position(0.5)
-        self.assertIn('current probe z_offset=1.500', gcmd.responses[0])
-        self.assertIn('new probe z_offset=1.000', gcmd.responses[0])
+        self.assertIn('z homing reference is off by 0.500000',
+                      gcmd.responses[0])
+        self.assertIn('Z homes on the probe, so it is the z_offset of the'
+                      ' probe: current 1.500 --> suggested 1.000',
+                      gcmd.responses[0])
 
     def test_suggestion_names_no_knob_for_a_routed_probe(self):
         # klipper-toolchanger routes per-tool probes and reports 0.0 as the
@@ -195,7 +198,8 @@ class ZCalibrationEndstopPinTest(unittest.TestCase):
         run._suggest_endstop_position(0.5)
         self.assertIn('z homing reference is off by 0.500000',
                       gcmd.responses[0])
-        self.assertNotIn('z_offset=', gcmd.responses[0])
+        self.assertNotIn('z_offset', gcmd.responses[0])
+        self.assertNotIn('suggested', gcmd.responses[0])
 
     def test_suggestion_survives_a_probe_without_offsets(self):
         helper = self.make_helper()
@@ -539,9 +543,12 @@ class ZCalibrationTest(unittest.TestCase):
         gcmd = FakeGcmd()
         run = z_calibration.CalibrationRun(helper, gcmd)
         run._suggest_endstop_position(0.5)
-        self.assertIn('current z axis position_endstop=2.000',
+        self.assertIn('z homing reference is off by 0.500000',
                       gcmd.responses[0])
-        self.assertIn('new z axis position_endstop=1.500', gcmd.responses[0])
+        self.assertIn('It is position_endstop in the z stepper section:'
+                      ' current 2.000 --> suggested 1.500',
+                      gcmd.responses[0])
+        self.assertNotIn('z_offset', gcmd.responses[0])
 
     def test_startup_fails_when_the_rail_endstop_has_no_steppers(self):
         # The guard is not specific to a plugin-owned endstop. A rail
@@ -777,8 +784,18 @@ class ZCalibrationTest(unittest.TestCase):
             [10.0, 10.0, 1.0],
             [20.0, 20.0, 2.0],
         ]
-        helper.cmd_CALIBRATE_Z(FakeGcmd())
+        gcmd = FakeGcmd()
+        helper.cmd_CALIBRATE_Z(gcmd)
         self.assertAlmostEqual(helper.last_z_offset, 3.5)
+        # The formula line labels the bed value as a measurement: a tester
+        # read "bed_probe=" as the probe z_offset and asked why it differed
+        # from the configured value.
+        formula = [r for r in gcmd.responses if 'new_offset=' in r]
+        self.assertEqual(len(formula), 1)
+        self.assertIn('measured bed=5.000 - (switch=2.000 - nozzle=1.000'
+                      ' + switch_offset=0.500) --> new_offset=3.500000',
+                      formula[0])
+        self.assertNotIn('bed_probe', formula[0])
 
     def test_suggestion_survives_an_unknown_homing_reference(self):
         helper, _printer = make_helper()
@@ -787,7 +804,7 @@ class ZCalibrationTest(unittest.TestCase):
         run = z_calibration.CalibrationRun(helper, gcmd)
         run._suggest_endstop_position(0.5)
         self.assertIn('z homing reference is off by', gcmd.responses[0])
-        self.assertNotIn('position_endstop=', gcmd.responses[0])
+        self.assertNotIn('suggested', gcmd.responses[0])
 
     def test_safe_z_height_uses_absolute_move(self):
         helper, printer = make_helper({'safe_z_height': '8'})

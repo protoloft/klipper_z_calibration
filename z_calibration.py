@@ -710,18 +710,20 @@ class CalibrationRun:
                                    " %.6f, correct it where it is defined"
                                    % (self.gcmd.get_command(), offset))
             return
-        self.gcmd.respond_info("%s: current %s=%.3f - new offset=%.6f -->"
-                               " POSSIBLE SUGGESTION: new %s=%.3f"
-                               % (self.gcmd.get_command(), knob,
-                                  pos_z_estop, offset, knob,
-                                  pos_z_estop - offset))
+        # Say where the reference is configured, not only its name: with a
+        # virtual endstop the number belongs to the probe, which is not
+        # where a user expects a z homing setting.
+        self.gcmd.respond_info("%s: the z homing reference is off by %.6f."
+                               " %s: current %.3f --> suggested %.3f"
+                               % (self.gcmd.get_command(), offset, knob,
+                                  pos_z_estop, pos_z_estop - offset))
 
     def _endstop_position_knob(self, pos_z_estop):
-        """Name the config option that holds the Z homing reference."""
+        """Describe the config option that holds the Z homing reference."""
         if self.helper.endstop_pin is None:
             # The Z rail homes from its own endstop, so position_z_endstop
             # is that rail's position_endstop.
-            return 'z axis position_endstop'
+            return 'It is position_endstop in the z stepper section'
         # The rail homes from a virtual endstop, so Klipper took its
         # position_endstop from the probe and the knob is the probe
         # z_offset. Only claim that when the probe still reports the same
@@ -734,7 +736,7 @@ class CalibrationRun:
             return None
         if abs(pos_z_estop - z_offset) > 1e-6:
             return None
-        return 'probe z_offset'
+        return 'Z homes on the probe, so it is the z_offset of the probe'
 
     def calibrate_z(self, switch_offset, nozzle_site, switch_site, bed_site):
         """Run the complete calibration sequence and store the result."""
@@ -784,7 +786,10 @@ class CalibrationRun:
             # calculate the offset
             offset = probe_zero - (switch_zero - nozzle_zero + switch_offset)
             # print result
-            self.gcmd.respond_info("%s: bed_probe=%.3f - (switch=%.3f"
+            # The three values are measured trigger positions, say so:
+            # the bed value sits next to the probe z_offset in the
+            # suggestion below and must not read as a probe setting.
+            self.gcmd.respond_info("%s: measured bed=%.3f - (switch=%.3f"
                                    " - nozzle=%.3f + switch_offset=%.3f) -->"
                                    " new_offset=%.6f"
                                    % (self.gcmd.get_command(), probe_zero,
