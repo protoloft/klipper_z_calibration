@@ -4,10 +4,11 @@ This file is for automated coding agents working in this repository.
 Human contributor guidance is in `CONTRIBUTING.md`. Maintainer release steps
 are in `docs/maintainer-release.md`.
 
-It is the single source of truth for agent instructions. Claude Code does not
-read `AGENTS.md` itself, so the repository ships a `CLAUDE.md` that pulls this
-file in with an `@AGENTS.md` import. Keep the rules here; do not duplicate
-them into `CLAUDE.md`.
+It is the single source of truth for agent instructions. Claude Code reads
+`AGENTS.md` only when no `CLAUDE.md` exists in or above the working directory,
+and older versions do not read it at all, so the repository ships a
+`CLAUDE.md` that pulls this file in with an `@AGENTS.md` import. Keep the
+rules here; do not duplicate them into `CLAUDE.md`.
 
 ## Safety Model
 

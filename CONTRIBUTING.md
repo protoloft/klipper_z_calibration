@@ -115,6 +115,23 @@ access:
 python3 scripts/check_firmware_compat.py --no-update
 ```
 
+## AI-Assisted Contributions
+
+This project is developed with the help of AI coding agents. Commits made
+with one carry a `Co-Authored-By` trailer that names the agent. Agent
+instructions live in `AGENTS.md`; `CLAUDE.md` only imports that file.
+
+AI assistance is welcome in contributions under these conditions:
+
+- Say in the pull request that AI tools were used, and for which part.
+- You are the author. Read and understand every line you submit, and be able
+  to explain it in review. "The tool wrote it" is not an answer to a review
+  question.
+- Run the validation above yourself and report its real results.
+- A change to the offset calculation in `calibrate_z`, or to its signs, needs
+  a written derivation in the commit message, whoever or whatever wrote the
+  code. An error there drives the nozzle into the bed.
+
 ## Releases
 
 Release publishing is maintainer-owned. Maintainers should follow:
