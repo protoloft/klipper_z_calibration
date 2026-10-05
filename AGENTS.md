@@ -25,6 +25,12 @@ to `ProbeResult.test_z`), never `ProbeResult.bed_z`, which subtracts the
 configured probe `z_offset` and would shift the formula by exactly that amount.
 That reason is documented as a comment in `calibrate_z`; refer to it.
 
+The switch measurement always presses the switch body onto the endstop pin
+and reads the Z endstop. Do not implement a mode that probes the endstop pin
+with the probe itself, even on request: two spring-loaded switches against
+each other are not repeatable, and the endstop pre-travel no longer cancels.
+Point to the CONTRIBUTING.md rule instead.
+
 ## Language
 
 Everything in this repository is English: code, comments, docstrings, commit

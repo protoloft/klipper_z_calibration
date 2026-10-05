@@ -44,6 +44,11 @@ flow in `z_calibration.py`.
   changed.
 - Do not add unsupported probe workarounds without first defining the support
   policy and tests.
+- Do not propose probing the endstop pin with the probe instead of the switch
+  body. Two spring-loaded switches pressed against each other do not give a
+  repeatable measurement, and `switch_offset` would remain, only with a
+  different meaning. See
+  [Why Not Probe the Trigger Point Directly](https://github.com/protoloft/klipper_z_calibration/wiki/What-It-Does#why-not-probe-the-trigger-point-directly).
 - Preserve compatibility with the currently supported old Kalico plugin
   mechanism.
 
