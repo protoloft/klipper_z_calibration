@@ -1,0 +1,354 @@
+# Unit tests for installer behavior and cleanup.
+#
+# Copyright (C) 2021-2026  Titus Meyer <info@protoloft.org>
+#
+# This file may be distributed under the terms of the GNU GPLv3 license.
+import os
+import pathlib
+import shlex
+import subprocess
+import tempfile
+import unittest
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+INSTALL_SH = ROOT / 'install.sh'
+
+
+def q(value):
+    """Shell-quote a value for bash snippets."""
+    return shlex.quote(str(value))
+
+
+def run_bash(script):
+    """Source install.sh and run a bash snippet in the repo root."""
+    command = ". %s\n%s" % (q(INSTALL_SH), script)
+    return subprocess.run(
+        ['bash', '-c', command],
+        cwd=str(ROOT),
+        text=True,
+        capture_output=True,
+        check=False)
+
+
+def make_klipper_tree(tempdir, kalico=False):
+    """Create a minimal fake Klipper/Kalico tree for installer tests."""
+    root = pathlib.Path(tempdir) / 'klipper'
+    (root / 'klippy' / 'extras').mkdir(parents=True)
+    if kalico:
+        (root / 'klippy' / 'plugins').mkdir(parents=True)
+    return root
+
+
+class InstallScriptTest(unittest.TestCase):
+    """Covers installer link creation and cleanup behavior."""
+
+    def test_links_stock_klipper_extra_only(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "link_extension\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            link = klipper / 'klippy' / 'extras' / 'z_calibration.py'
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.resolve(), ROOT / 'z_calibration.py')
+            self.assertFalse(
+                (klipper / 'klippy' / 'extras' / 'klipper_compat.py').exists())
+
+    def test_links_kalico_plugin_and_cleans_old_repo_links(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir, kalico=True)
+            extras = klipper / 'klippy' / 'extras'
+            plugins = klipper / 'klippy' / 'plugins'
+            os.symlink(ROOT / 'z_calibration.py',
+                       extras / 'z_calibration.py')
+            os.symlink(ROOT / 'klipper_compat.py',
+                       extras / 'klipper_compat.py')
+            os.symlink(ROOT / 'klipper_compat.py',
+                       plugins / 'klipper_compat.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "link_extension\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            link = plugins / 'z_calibration.py'
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.resolve(), ROOT / 'z_calibration.py')
+            self.assertFalse((extras / 'z_calibration.py').exists())
+            self.assertFalse((extras / 'klipper_compat.py').exists())
+            self.assertFalse((plugins / 'klipper_compat.py').exists())
+
+    def test_uninstall_removes_only_repo_owned_python_links(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink(ROOT / 'z_calibration.py',
+                       extras / 'z_calibration.py')
+            regular = extras / 'klipper_compat.py'
+            regular.write_text("do not remove\n", encoding='utf-8')
+            (extras / 'z_calibration.pyc').write_text("bytecode\n",
+                                                      encoding='utf-8')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "uinstall\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse((extras / 'z_calibration.py').exists())
+            self.assertFalse((extras / 'z_calibration.pyc').exists())
+            self.assertTrue(regular.exists())
+            self.assertEqual(regular.read_text(encoding='utf-8'),
+                             "do not remove\n")
+
+    def test_uninstall_main_does_not_require_moonraker_config(self):
+        result = run_bash(
+            "verify_ready(){ echo verify; }\n"
+            "check_klipper(){ echo bad_service_check; }\n"
+            "check_klipper_path(){ echo check_path; }\n"
+            "check_requirements(){ echo bad_requirements; return 42; }\n"
+            "uinstall(){ echo uninstall; }\n"
+            "restart_klipper(){ echo restart; }\n"
+            "main -u\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('bad_requirements', result.stdout)
+        # Uninstall has to work without a reachable Klipper service.
+        self.assertNotIn('bad_service_check', result.stdout)
+        self.assertIn('uninstall', result.stdout)
+
+    def test_help_option_exits_successfully(self):
+        result = run_bash("main -h\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Usage:", result.stdout)
+
+    def test_unknown_option_fails_with_usage(self):
+        result = run_bash("main -x\n")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("Usage:", result.stderr)
+
+    def test_failed_service_restart_does_not_abort(self):
+        # Multi-instance setups often have no plain "moonraker" unit; a
+        # failed restart must not kill the install through "set -e".
+        result = run_bash(
+            "sudo(){ return 1; }\n"
+            "restart_service moonraker\n"
+            "echo continued\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("please restart moonraker manually", result.stdout)
+        self.assertIn("continued", result.stdout)
+
+    def test_service_check_matches_the_unit_name_exactly(self):
+        # A substring grep would accept "kalico-klipper.service" here.
+        result = run_bash(
+            "sudo(){ printf 'kalico-klipper.service loaded active"
+            " running x\\n'; }\n"
+            "if service_exists klipper.service; then echo found;"
+            " else echo missing; fi\n"
+            "sudo(){ printf 'klipper.service loaded active running"
+            " x\\n'; }\n"
+            "if service_exists klipper.service; then echo found2; fi\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("missing", result.stdout)
+        self.assertIn("found2", result.stdout)
+
+    def test_main_resets_num_installs_between_invocations(self):
+        result = run_bash(
+            "check_klipper(){ :; }\n"
+            "check_requirements(){ MOONRAKER_AVAILABLE=0; }\n"
+            "link_extension(){ :; }\n"
+            "restart_klipper(){ :; }\n"
+            "main -n 2\n"
+            "main\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Number of Installs Selected: 2", result.stdout)
+        self.assertIn("Defaulted to one klipper install", result.stdout)
+
+    def test_uninstall_without_links_does_not_restart_klipper(self):
+        # Nothing was removed, so nothing changed for Klipper. Rerunning -u
+        # stays idempotent and still reports success.
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "restart_klipper(){ echo ran_restart; }\n"
+                "main -u\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("nothing to uninstall", result.stdout)
+            self.assertNotIn("ran_restart", result.stdout)
+
+    def test_uninstall_with_links_restarts_klipper(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink(ROOT / 'z_calibration.py', extras / 'z_calibration.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "restart_klipper(){ echo ran_restart; }\n"
+                "main -u\n" % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("ran_restart", result.stdout)
+            self.assertFalse((extras / 'z_calibration.py').is_symlink())
+
+    def test_main_rejects_invalid_num_installs_before_service_checks(self):
+        for value in ['0', '-1', 'abc']:
+            with self.subTest(value=value):
+                result = run_bash(
+                    "check_klipper(){ echo bad_service_check; }\n"
+                    "main -n %s\n" % (q(value),))
+                # Exit code 1, not the 255 that "exit -1" used to produce.
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("-n must be a positive integer", result.stdout)
+                self.assertNotIn("bad_service_check", result.stdout)
+
+    def test_explicit_moonraker_config_must_exist(self):
+        # A path given with -m is an explicit request. Silently skipping the
+        # update manager would not be what the caller asked for.
+        with tempfile.TemporaryDirectory() as tempdir:
+            missing = pathlib.Path(tempdir) / 'moonraker.conf'
+            result = run_bash(
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_CONFIG_CUSTOM=1\n"
+                "resolve_moonraker_config\n" % (q(missing),))
+            self.assertEqual(result.returncode, 1, result.stderr)
+            self.assertIn("Moonraker configuration not found", result.stdout)
+
+    def test_default_moonraker_config_is_optional(self):
+        # Moonraker manages updates, it does not run the plugin. Without it
+        # the update manager step is skipped, not the installation.
+        with tempfile.TemporaryDirectory() as tempdir:
+            missing = pathlib.Path(tempdir) / 'moonraker.conf'
+            fallback = pathlib.Path(tempdir) / 'old' / 'moonraker.conf'
+            result = run_bash(
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_FALLBACK=%s\n"
+                "MOONRAKER_CONFIG_CUSTOM=0\n"
+                # "set -e" would end the snippet on the non-zero status, so
+                # the status is captured the way check_requirements does.
+                "if resolve_moonraker_config; then rc=0; else rc=1; fi\n"
+                "printf 'rc=%%s\\n' \"$rc\"\n"
+                % (q(missing), q(fallback)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("rc=1", result.stdout)
+            self.assertIn("Skipping the update manager", result.stdout)
+
+    def test_install_links_the_plugin_without_moonraker(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            missing = pathlib.Path(tempdir) / 'moonraker.conf'
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_FALLBACK=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "add_updater(){ echo ran_add_updater; }\n"
+                "restart_klipper(){ echo restart; }\n"
+                "main\n" % (q(klipper), q(missing), q(missing)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertNotIn("ran_add_updater", result.stdout)
+            self.assertIn("restart", result.stdout)
+            link = klipper / 'klippy' / 'extras' / 'z_calibration.py'
+            self.assertEqual(os.readlink(str(link)),
+                             str(ROOT / 'z_calibration.py'))
+
+    def test_install_adds_the_updater_when_moonraker_is_present(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            config = pathlib.Path(tempdir) / 'moonraker.conf'
+            config.write_text("[server]\n", encoding='utf-8')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "MOONRAKER_CONFIG=%s\n"
+                "verify_ready(){ :; }\n"
+                "check_klipper(){ :; }\n"
+                "add_updater(){ echo ran_add_updater; }\n"
+                "restart_klipper(){ echo restart; }\n"
+                "main\n" % (q(klipper), q(config)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("ran_add_updater", result.stdout)
+
+    def test_error_paths_do_not_use_negative_exit_codes(self):
+        text = INSTALL_SH.read_text(encoding='utf-8')
+        self.assertNotIn("exit -", text)
+
+    def test_helper_functions_do_not_leak_locals(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink(ROOT / 'z_calibration.py',
+                       extras / 'z_calibration.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "is_repo_link %s %s\n"
+                "printf 'rc=%%s\\n' \"$?\"\n"
+                "remove_file_if_present %s\n"
+                "printf 'link_path=[%%s]\\n' \"${link_path-unset}\"\n"
+                "printf 'target_path=[%%s]\\n' \"${target_path-unset}\"\n"
+                "printf 'file_path=[%%s]\\n' \"${file_path-unset}\"\n"
+                % (q(klipper), q(extras / 'z_calibration.py'),
+                   q(ROOT / 'z_calibration.py'),
+                   q(extras / 'z_calibration.pyc')))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("rc=0", result.stdout)
+            self.assertIn("link_path=[unset]", result.stdout)
+            self.assertIn("target_path=[unset]", result.stdout)
+            self.assertIn("file_path=[unset]", result.stdout)
+
+    def test_is_repo_link_reports_foreign_links_as_false(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink('/somewhere/else/z_calibration.py',
+                       extras / 'z_calibration.py')
+            result = run_bash(
+                "set_install_paths\n"
+                "if is_repo_link %s %s; then echo owned;"
+                " else echo foreign; fi\n"
+                % (q(extras / 'z_calibration.py'),
+                   q(ROOT / 'z_calibration.py')))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("foreign", result.stdout)
+
+    def test_uninstall_warns_about_foreign_leftovers(self):
+        # The no-delete policy leaves a link from a moved checkout alone,
+        # but the user has to hear about it instead of a clean report.
+        with tempfile.TemporaryDirectory() as tempdir:
+            klipper = make_klipper_tree(tempdir)
+            extras = klipper / 'klippy' / 'extras'
+            os.symlink('/somewhere/else/z_calibration.py',
+                       extras / 'z_calibration.py')
+            result = run_bash(
+                "KLIPPER_PATH=%s\n"
+                "set_install_paths\n"
+                "if uinstall; then echo removed; else echo skipped; fi\n"
+                % (q(klipper),))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("nothing to uninstall", result.stdout)
+            self.assertIn("not owned by this checkout", result.stdout)
+            self.assertIn("skipped", result.stdout)
+
+    def test_default_moonraker_config_falls_back_to_old_path(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            default = pathlib.Path(tempdir) / 'printer_data' / 'moonraker.conf'
+            fallback = pathlib.Path(tempdir) / 'klipper_config'
+            fallback.mkdir()
+            fallback_config = fallback / 'moonraker.conf'
+            fallback_config.write_text("[server]\n", encoding='utf-8')
+            result = run_bash(
+                "MOONRAKER_CONFIG=%s\n"
+                "MOONRAKER_FALLBACK=%s\n"
+                "MOONRAKER_CONFIG_CUSTOM=0\n"
+                "resolve_moonraker_config\n"
+                "printf 'selected=%%s\\n' \"$MOONRAKER_CONFIG\"\n"
+                % (q(default), q(fallback_config)))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("selected=%s" % (fallback_config,), result.stdout)
+
+
+if __name__ == '__main__':
+    unittest.main()
